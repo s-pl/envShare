@@ -1,0 +1,19 @@
+# Caddyfile — TLS termination for envShare
+# Replace "your-domain.com" with your actual domain (Caddy gets Let's Encrypt certs automatically)
+# For local dev without a domain, use "localhost" (Caddy issues a self-signed cert trusted by its CA)
+
+{$ESAI_DOMAIN:localhost} {
+  # Frontend
+  reverse_proxy /api/* backend:3000
+  reverse_proxy frontend:80
+
+  # Security headers
+  header {
+    Strict-Transport-Security "max-age=31536000; includeSubDomains"
+    X-Content-Type-Options    "nosniff"
+    X-Frame-Options           "DENY"
+    Referrer-Policy           "strict-origin-when-cross-origin"
+  }
+
+  encode gzip
+}

@@ -1,0 +1,42 @@
+/**
+ * esai set KEY value  — set your personal value for a secret
+ * esai set KEY value --shared — update the shared value (syncs to all)
+ */
+import { Command } from 'commander';
+import chalk from 'chalk';
+import { api, ApiError } from '../api.js';
+import { readProjectLink } from '../config.js';
+
+export const setCommand = new Command('set')
+  .description('Set your personal value for a secret key')
+  .argument('<key>', 'Variable name (e.g. DATABASE_URL)')
+  .argument('<value>', 'Value to set')
+  .option('--shared', 'Update the shared value (syncs to everyone)')
+  .action(async (key: string, value: string, opts) => {
+    const link = readProjectLink();
+    if (!link) {
+      console.error(chalk.red('  No project linked. Run `esai init` first.'));
+      process.exit(1);
+    }
+
+    try {
+      const { secrets } = await api.get<{ secrets: any[] }>(`/secrets/${link.projectId}`);
+      const secret = secrets.find((s: any) => s.key === key);
+
+      if (!secret) {
+        console.error(chalk.red(`  Key "${key}" not found. Push your .env first to register new keys.`));
+        process.exit(1);
+      }
+
+      if (opts.shared) {
+        await api.patch(`/secrets/${secret.id}/shared`, { value });
+        console.log(chalk.blue(`  🌐 Shared value updated for ${key} (all team members will see this)`));
+      } else {
+        await api.patch(`/secrets/${secret.id}/value`, { value });
+        console.log(chalk.green(`  ✔ Personal value set for ${key}`));
+      }
+    } catch (err) {
+      if (err instanceof ApiError) { console.error(chalk.red(`  Error: ${err.message}`)); process.exit(1); }
+      throw err;
+    }
+  });

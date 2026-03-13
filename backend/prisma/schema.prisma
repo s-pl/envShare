@@ -1,0 +1,138 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  projectMembers   ProjectMember[]
+  personalValues   UserSecretValue[]
+  tokens           RefreshToken[]
+  secretVersions   SecretVersion[]
+}
+
+model Project {
+  id           String   @id @default(cuid())
+  name         String
+  slug         String   @unique
+  encryptedKey String   // AES-256 project key encrypted with master key
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  members ProjectMember[]
+  secrets Secret[]
+}
+
+model ProjectMember {
+  id        String      @id @default(cuid())
+  role      ProjectRole @default(DEVELOPER)
+  projectId String
+  userId    String
+  createdAt DateTime    @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, userId])
+}
+
+enum ProjectRole {
+  ADMIN
+  DEVELOPER
+  VIEWER
+}
+
+model Secret {
+  id           String  @id @default(cuid())
+  projectId    String
+  keyHash      String  // HMAC-SHA256(keyName, projectKey) — dedup sin revelar el nombre
+
+  // Key name (encrypted, same for everyone)
+  encryptedKey String
+  keyIV        String
+  keyTag       String
+
+  // Shared value — visible and equal for ALL members (e.g. server URLs)
+  isShared             Boolean @default(false)
+  sharedEncryptedValue String?
+  sharedValueIV        String?
+  sharedValueTag       String?
+
+  comment   String?
+  version   Int      @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project      Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  userValues   UserSecretValue[]
+  versions     SecretVersion[]
+
+  @@unique([projectId, keyHash])
+}
+
+// Per-user personal value for a secret
+model UserSecretValue {
+  id             String   @id @default(cuid())
+  secretId       String
+  userId         String
+  encryptedValue String
+  valueIV        String
+  valueTag       String
+  updatedAt      DateTime @updatedAt
+
+  secret Secret @relation(fields: [secretId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([secretId, userId])
+}
+
+// Audit trail for every change to a secret
+model SecretVersion {
+  id       String  @id @default(cuid())
+  secretId String
+  userId   String?                          // who made the change (null = system/migration)
+  action   String  @default("updated")     // "created" | "updated" | "deleted"
+  isShared Boolean @default(false)
+
+  // Snapshot of the shared value at this version (null for personal secrets)
+  sharedEncryptedValue String?
+  sharedValueIV        String?
+  sharedValueTag       String?
+
+  version   Int
+  createdAt DateTime @default(now())
+
+  secret Secret @relation(fields: [secretId], references: [id], onDelete: Cascade)
+  user   User?  @relation(fields: [userId], references: [id], onDelete: SetNull)
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model AuditLog {
+  id           String   @id @default(cuid())
+  action       String
+  actor        String
+  resourceId   String
+  resourceType String
+  metadata     Json?
+  createdAt    DateTime @default(now())
+}

@@ -1,0 +1,41 @@
+# docker-compose.https.yml — overlay for HTTPS production deployment
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.https.yml up -d
+#
+# Set ESAI_DOMAIN in your .env:
+#   ESAI_DOMAIN=secrets.mycompany.com
+#
+# Caddy auto-provisions a Let's Encrypt cert for that domain.
+# For local dev with self-signed cert, leave ESAI_DOMAIN=localhost
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"   # HTTP/3
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    environment:
+      ESAI_DOMAIN: ${ESAI_DOMAIN:-localhost}
+    networks:
+      - external
+    depends_on:
+      - backend
+      - frontend
+
+  # Remove direct port exposure — Caddy is the only entry point
+  backend:
+    ports: !reset []
+
+  frontend:
+    ports: !reset []
+
+volumes:
+  caddy_data:
+  caddy_config:
