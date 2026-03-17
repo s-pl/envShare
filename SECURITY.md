@@ -178,4 +178,3 @@ Full privacy policy: `/privacy` (in-app) or `PRIVACY.md`.
 | `LOG_LEVEL` | — | Winston log level: `error`, `warn`, `info`, `debug` (default: `info`). |
 ```
 
-Now let me check the diagnostics to see the state of things:
