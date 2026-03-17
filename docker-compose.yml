@@ -13,8 +13,12 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-    ports:
-      - "5432:5432"
+    # ── Security: PostgreSQL is only accessible within the internal network.
+    # Do NOT expose port 5432 to the host in production — remove or comment
+    # the ports section below when deploying. It is provided here for local
+    # development convenience only.
+    # ports:
+    #   - "5432:5432"
     networks:
       - internal
 
@@ -33,6 +37,19 @@ services:
       MASTER_ENCRYPTION_KEY: ${MASTER_ENCRYPTION_KEY:?MASTER_ENCRYPTION_KEY is required}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:5173}
       PORT: 3000
+      # ── GDPR Art. 5(1)(e) — Storage limitation ──────────────────────────────
+      # Number of days to retain audit log entries (including IP addresses).
+      # After this window, entries are automatically purged by the daily
+      # retention job. Default: 365 days. Minimum recommended: 90 days.
+      # Set AUDIT_LOG_RETENTION_DAYS=0 to disable automatic purging (not recommended).
+      AUDIT_LOG_RETENTION_DAYS: ${AUDIT_LOG_RETENTION_DAYS:-365}
+      # ── ISO 27001 A.12.4 ────────────────────────────────────────────────────
+      # Set to "false" to disable automatic cleanup of expired refresh tokens.
+      # Expired tokens are harmless but take up space and contain personal data
+      # (IP address, User-Agent). Default: enabled.
+      TOKEN_CLEANUP: ${TOKEN_CLEANUP:-true}
+      # ── Optional ────────────────────────────────────────────────────────────
+      LOG_LEVEL: ${LOG_LEVEL:-info}
     ports:
       - "3001:3000"
     networks:
@@ -57,6 +74,8 @@ volumes:
     driver: local
 
 networks:
+  # internal: only backend + postgres can communicate here
   internal:
     internal: true
+  # external: backend API and frontend are reachable from outside
   external:

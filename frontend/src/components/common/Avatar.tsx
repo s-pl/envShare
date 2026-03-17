@@ -1,18 +1,7 @@
 import { cn } from '../../lib/utils';
 
-const COLORS = [
-  'bg-blue-100 text-blue-700',
-  'bg-violet-100 text-violet-700',
-  'bg-emerald-100 text-emerald-700',
-  'bg-amber-100 text-amber-700',
-  'bg-rose-100 text-rose-700',
-  'bg-cyan-100 text-cyan-700',
-];
-
-function colorForName(name: string) {
-  let hash = 0;
-  for (const ch of name) hash = hash * 31 + ch.charCodeAt(0);
-  return COLORS[Math.abs(hash) % COLORS.length];
+function colorForName(_name: string) {
+  return 'bg-muted text-foreground';
 }
 
 interface AvatarProps {

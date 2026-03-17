@@ -14,7 +14,7 @@ secretsRouter.get('/:projectId', async (req: AuthRequest, res, next) => {
     const member = await prisma.projectMember.findUnique({
       where: { projectId_userId: { projectId: req.params.projectId, userId: req.user!.id } },
     });
-    if (!member) throw new AppError(403, 'Access denied');
+    if (!member) throw new AppError(403, 'Access denied', 'FORBIDDEN');
 
     const secrets = await secretsService.listForUser(req.params.projectId, req.user!.id);
     res.json({ secrets });
@@ -28,12 +28,12 @@ secretsRouter.get('/:secretId/history', async (req: AuthRequest, res, next) => {
       where: { id: req.params.secretId },
       select: { projectId: true },
     });
-    if (!secret) throw new AppError(404, 'Secret not found');
+    if (!secret) throw new AppError(404, 'Secret not found', 'NOT_FOUND');
 
     const member = await prisma.projectMember.findUnique({
       where: { projectId_userId: { projectId: secret.projectId, userId: req.user!.id } },
     });
-    if (!member) throw new AppError(403, 'Access denied');
+    if (!member) throw new AppError(403, 'Access denied', 'FORBIDDEN');
 
     const history = await secretsService.getHistory(req.params.secretId, secret.projectId);
     res.json({ history });

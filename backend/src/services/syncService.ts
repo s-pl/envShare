@@ -1,13 +1,9 @@
 /**
  * Sync Service — push/pull logic.
  *
- * Push behavior:
- *   - New key (not seen before)     → creates Secret + initial SecretVersion
- *   - isShared=true                 → updates shared value for everyone, records version
- *   - isShared=false                → updates only the pusher's personal value
- *
- * Pull behavior:
- *   - For each secret: return shared value OR user's personal value
+ * Push: accepts optional environmentId to link secrets to a specific .env file.
+ * Pull: returns secrets with their environment's filePath so the CLI knows
+ *       where to write each variable.
  */
 import { prisma } from '../utils/prisma';
 import { encrypt, getMasterKey, unwrapKey, hashKey } from '../utils/crypto';
@@ -36,7 +32,12 @@ export interface PushResult {
 }
 
 export const syncService = {
-  async push(projectId: string, entries: PushEntry[], userId: string): Promise<PushResult> {
+  async push(
+    projectId: string,
+    entries: PushEntry[],
+    userId: string,
+    environmentId?: string,
+  ): Promise<PushResult> {
     const result: PushResult = { created: [], updated: [], sharedUpdated: [] };
     const projectKey = await getProjectKey(projectId);
 
@@ -59,23 +60,29 @@ export const syncService = {
             keyIV: encKey.iv,
             keyTag: encKey.tag,
             isShared,
+            environmentId: environmentId ?? null,
             comment: isShared ? '🌐 Shared value' : undefined,
             version: 1,
           },
         });
         result.created.push(key);
       } else {
+        // Update environmentId if newly provided
+        if (environmentId && !secret.environmentId) {
+          await prisma.secret.update({
+            where: { id: secret.id },
+            data: { environmentId },
+          });
+        }
         result.updated.push(key);
       }
 
       if (isShared) {
-        // setSharedValue handles versioning internally
         await secretsService.setSharedValue(secret.id, value, userId);
         result.sharedUpdated.push(key);
       } else {
         await secretsService.setPersonalValue(secret.id, value, userId);
 
-        // Record initial version for new personal secrets
         if (isNew) {
           await prisma.secretVersion.create({
             data: {
@@ -100,6 +107,7 @@ export const syncService = {
           created: result.created.length,
           updated: result.updated.length,
           sharedUpdated: result.sharedUpdated.length,
+          environmentId: environmentId ?? null,
         },
       },
     });
@@ -108,6 +116,29 @@ export const syncService = {
   },
 
   async pull(projectId: string, userId: string) {
-    return secretsService.listForUser(projectId, userId);
+    const secrets = await secretsService.listForUser(projectId, userId);
+
+    // Fetch environment filePaths for each secret
+    const secretEnvMap = await prisma.secret.findMany({
+      where: { projectId },
+      select: { id: true, environmentId: true },
+    });
+    const envIdBySecretId = new Map(secretEnvMap.map(s => [s.id, s.environmentId]));
+
+    const environments = await prisma.environment.findMany({
+      where: { projectId },
+      select: { id: true, filePath: true, name: true },
+    });
+    const envById = new Map(environments.map(e => [e.id, e]));
+
+    return secrets.map(s => {
+      const envId = envIdBySecretId.get(s.id);
+      const env = envId ? envById.get(envId) : null;
+      return {
+        ...s,
+        filePath: env?.filePath ?? '.env',
+        environmentName: env?.name ?? 'production',
+      };
+    });
   },
 };

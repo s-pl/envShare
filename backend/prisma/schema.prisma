@@ -8,6 +8,40 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Environment
+// Represents a single .env file at a specific path within a project.
+// Examples: name="production" filePath=".env"
+//           name="staging"    filePath=".env.staging"
+//           name="api"        filePath="apps/api/.env"
+//
+// Secrets belong to an Environment, not directly to a Project.
+// Every new project gets a default "production" environment automatically.
+// ─────────────────────────────────────────────────────────────────────────────
+model Environment {
+  id          String  @id @default(cuid())
+  projectId   String
+  name        String // Human-readable label shown in the UI
+  filePath    String // Relative path on disk (e.g. ".env", "apps/api/.env")
+  description String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  secrets Secret[]
+
+  @@unique([projectId, name])
+  @@unique([projectId, filePath])
+  @@index([projectId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// User
+// GDPR fields: consentedAt tracks when the user accepted the Privacy Policy.
+// ISO 27001 / A.9.4.2: failedLoginAttempts + lockedUntil implement account
+// lockout after repeated failed authentication attempts.
+// ─────────────────────────────────────────────────────────────────────────────
 model User {
   id           String   @id @default(cuid())
   email        String   @unique
@@ -16,22 +50,33 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  projectMembers   ProjectMember[]
-  personalValues   UserSecretValue[]
-  tokens           RefreshToken[]
-  secretVersions   SecretVersion[]
+  // GDPR Art. 7 — explicit consent timestamp
+  consentedAt DateTime?
+
+  // ISO 27001 A.9.4.2 — account lockout after repeated failed logins
+  failedLoginAttempts Int       @default(0)
+  lockedUntil         DateTime?
+
+  projectMembers ProjectMember[]
+  personalValues UserSecretValue[]
+  tokens         RefreshToken[]
+  secretVersions SecretVersion[]
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Project
+// ─────────────────────────────────────────────────────────────────────────────
 model Project {
   id           String   @id @default(cuid())
   name         String
   slug         String   @unique
-  encryptedKey String   // AES-256 project key encrypted with master key
+  encryptedKey String // AES-256 project key encrypted with master key
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  members ProjectMember[]
-  secrets Secret[]
+  members      ProjectMember[]
+  secrets      Secret[]
+  environments Environment[]
 }
 
 model ProjectMember {
@@ -45,6 +90,7 @@ model ProjectMember {
   user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([projectId, userId])
+  @@index([userId])
 }
 
 enum ProjectRole {
@@ -53,10 +99,15 @@ enum ProjectRole {
   VIEWER
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Secret
+// ─────────────────────────────────────────────────────────────────────────────
 model Secret {
-  id           String  @id @default(cuid())
-  projectId    String
-  keyHash      String  // HMAC-SHA256(keyName, projectKey) — dedup sin revelar el nombre
+  id            String  @id @default(cuid())
+  projectId     String
+  environmentId String? // null = legacy (pre-environments) or default env
+
+  keyHash String // HMAC-SHA256(keyName, projectKey) — dedup without revealing key name
 
   // Key name (encrypted, same for everyone)
   encryptedKey String
@@ -74,11 +125,14 @@ model Secret {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  project      Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  userValues   UserSecretValue[]
-  versions     SecretVersion[]
+  project     Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  environment Environment?      @relation(fields: [environmentId], references: [id], onDelete: SetNull)
+  userValues  UserSecretValue[]
+  versions    SecretVersion[]
 
   @@unique([projectId, keyHash])
+  @@index([projectId])
+  @@index([environmentId])
 }
 
 // Per-user personal value for a secret
@@ -95,14 +149,15 @@ model UserSecretValue {
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([secretId, userId])
+  @@index([userId])
 }
 
 // Audit trail for every change to a secret
 model SecretVersion {
   id       String  @id @default(cuid())
   secretId String
-  userId   String?                          // who made the change (null = system/migration)
-  action   String  @default("updated")     // "created" | "updated" | "deleted"
+  userId   String? // who made the change (null = system/migration)
+  action   String  @default("updated") // "created" | "updated" | "deleted"
   isShared Boolean @default(false)
 
   // Snapshot of the shared value at this version (null for personal secrets)
@@ -115,8 +170,13 @@ model SecretVersion {
 
   secret Secret @relation(fields: [secretId], references: [id], onDelete: Cascade)
   user   User?  @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([secretId])
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Auth
+// ─────────────────────────────────────────────────────────────────────────────
 model RefreshToken {
   id        String   @id @default(cuid())
   token     String   @unique
@@ -124,15 +184,41 @@ model RefreshToken {
   expiresAt DateTime
   createdAt DateTime @default(now())
 
+  // ISO 27001 A.12.4 — track which device/client issued this token
+  userAgent String?
+  ipAddress String?
+
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt]) // used by the cleanup/retention job
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Audit Log
+// ISO 27001 A.12.4.1 — Event Logging.
+// GDPR Art. 5(1)(f) — integrity and confidentiality.
+//
+// ipAddress and userAgent are retained for security monitoring purposes only
+// (fraud detection, anomaly alerts). They are covered under the Privacy Policy
+// legitimate-interest basis and are purged after AUDIT_LOG_RETENTION_DAYS.
+// ─────────────────────────────────────────────────────────────────────────────
 model AuditLog {
   id           String   @id @default(cuid())
   action       String
-  actor        String
+  actor        String // userId or 'system'
   resourceId   String
   resourceType String
   metadata     Json?
   createdAt    DateTime @default(now())
+
+  // ISO 27001 A.12.4 — source context for each event
+  ipAddress String?
+  userAgent String?
+
+  // Performance indexes — used by the audit query and the retention cleanup job
+  @@index([actor])
+  @@index([resourceType])
+  @@index([resourceId])
+  @@index([createdAt])
 }

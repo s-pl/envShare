@@ -8,12 +8,12 @@ const ACTION_META: Record<string, { label: string; icon: React.ReactNode; classe
   created: {
     label: 'Created',
     icon: <CheckCircle className="h-3 w-3" />,
-    classes: 'text-emerald-700 bg-emerald-50 border-emerald-200',
+    classes: 'text-foreground bg-muted border-border',
   },
   updated: {
     label: 'Updated',
     icon: <RefreshCw className="h-3 w-3" />,
-    classes: 'text-blue-700 bg-blue-50 border-blue-200',
+    classes: 'text-muted-foreground bg-muted border-border',
   },
 };
 

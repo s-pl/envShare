@@ -9,7 +9,7 @@ export interface AuthRequest extends Request {
 export function authenticate(req: AuthRequest, res: Response, next: NextFunction): void {
   const header = req.headers.authorization;
   if (!header?.startsWith('Bearer ')) {
-    res.status(401).json({ error: 'Missing or invalid Authorization header' });
+    res.status(401).json({ error: 'Missing or invalid Authorization header', code: 'AUTH_TOKEN_MISSING' });
     return;
   }
 
@@ -22,7 +22,7 @@ export function authenticate(req: AuthRequest, res: Response, next: NextFunction
     req.user = { id: payload.sub, email: payload.email };
     next();
   } catch {
-    res.status(401).json({ error: 'Invalid or expired token' });
+    res.status(401).json({ error: 'Invalid or expired token', code: 'AUTH_TOKEN_INVALID' });
   }
 }
 
@@ -45,12 +45,12 @@ export function requireProjectAccess(minRole: 'VIEWER' | 'DEVELOPER' | 'ADMIN' =
     });
 
     if (!member) {
-      res.status(403).json({ error: 'Access denied to this project' });
+      res.status(403).json({ error: 'Access denied to this project', code: 'FORBIDDEN' });
       return;
     }
 
     if (roleWeight[member.role] < roleWeight[minRole]) {
-      res.status(403).json({ error: `Requires ${minRole} role or higher` });
+      res.status(403).json({ error: `Requires ${minRole} role or higher`, code: 'FORBIDDEN_ROLE' });
       return;
     }
 

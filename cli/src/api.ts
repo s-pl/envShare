@@ -27,6 +27,7 @@ async function request<T>(
     method,
     headers: {
       'Content-Type': 'application/json',
+      'x-client': 'cli',
       ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
     },
     body: body ? JSON.stringify(body) : undefined,

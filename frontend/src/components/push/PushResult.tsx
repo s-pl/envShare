@@ -19,43 +19,43 @@ export function PushResult({ result, onReset }: PushResultProps) {
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-2 text-sm font-medium text-emerald-700">
+      <div className="flex items-center gap-2 text-sm font-medium text-foreground">
         <CheckCircle className="h-4 w-4" />
         {total} secret{total !== 1 ? 's' : ''} synced successfully
       </div>
 
       {result.created.length > 0 && (
-        <Card className="border-emerald-200 bg-emerald-50/50 dark:bg-emerald-950/20">
+        <Card className="border-border/60 bg-muted/30">
           <CardContent className="pt-4 pb-3">
-            <div className="flex items-center gap-2 font-medium text-emerald-800 mb-1.5 text-sm">
+            <div className="flex items-center gap-2 font-medium text-foreground mb-1.5 text-sm">
               <CheckCircle className="h-4 w-4" />
               New secrets ({result.created.length})
             </div>
-            <p className="text-sm text-emerald-700 font-mono">{result.created.join(', ')}</p>
+            <p className="text-sm text-muted-foreground font-mono">{result.created.join(', ')}</p>
           </CardContent>
         </Card>
       )}
 
       {result.updated.length > 0 && (
-        <Card className="border-blue-200 bg-blue-50/50">
+        <Card className="border-border/60 bg-muted/30">
           <CardContent className="pt-4 pb-3">
-            <div className="flex items-center gap-2 font-medium text-blue-800 mb-1.5 text-sm">
+            <div className="flex items-center gap-2 font-medium text-foreground mb-1.5 text-sm">
               <RefreshCw className="h-4 w-4" />
               Updated ({result.updated.length})
             </div>
-            <p className="text-sm text-blue-700 font-mono">{result.updated.join(', ')}</p>
+            <p className="text-sm text-muted-foreground font-mono">{result.updated.join(', ')}</p>
           </CardContent>
         </Card>
       )}
 
       {result.sharedUpdated.length > 0 && (
-        <Card className="border-primary/20 bg-primary/5">
+        <Card className="border-border/60 bg-muted/30">
           <CardContent className="pt-4 pb-3">
-            <div className="flex items-center gap-2 font-medium text-primary mb-1.5 text-sm">
+            <div className="flex items-center gap-2 font-medium text-foreground mb-1.5 text-sm">
               <Globe className="h-4 w-4" />
               Shared — visible to all ({result.sharedUpdated.length})
             </div>
-            <p className="text-sm text-primary/80 font-mono">{result.sharedUpdated.join(', ')}</p>
+            <p className="text-sm text-muted-foreground font-mono">{result.sharedUpdated.join(', ')}</p>
           </CardContent>
         </Card>
       )}

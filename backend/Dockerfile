@@ -29,8 +29,10 @@ RUN npm install --omit=dev
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY prisma ./prisma
+COPY entrypoint.sh ./entrypoint.sh
 
-RUN mkdir -p logs && chown appuser:appgroup logs
+RUN mkdir -p logs && chown appuser:appgroup logs && \
+    chmod +x entrypoint.sh
 
 USER appuser
 
@@ -39,4 +41,4 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD wget -qO- http://localhost:3000/health || exit 1
 
-CMD ["node", "dist/app.js"]
+CMD ["./entrypoint.sh"]

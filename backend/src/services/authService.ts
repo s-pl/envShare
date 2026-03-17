@@ -1,51 +1,223 @@
-import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
-import { randomBytes } from 'crypto';
-import { prisma } from '../utils/prisma';
-import { AppError } from '../middleware/errorHandler';
+import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
+import { randomBytes } from "crypto";
+import { prisma } from "../utils/prisma";
+import { AppError } from "../middleware/errorHandler";
+import { logger } from "../utils/logger";
+
+// ─── Constants ────────────────────────────────────────────────────────────────
 
 const BCRYPT_ROUNDS = 12;
-const ACCESS_TOKEN_TTL = '15m';
+const ACCESS_TOKEN_TTL = "15m";
 const REFRESH_TOKEN_TTL_DAYS = 7;
+
+/**
+ * ISO 27001 A.9.4.2 — Secure log-on procedures.
+ * After MAX_FAILED_ATTEMPTS consecutive failures the account is locked for
+ * LOCKOUT_DURATION_MINUTES. The counter resets on any successful login.
+ */
+const MAX_FAILED_ATTEMPTS = 10;
+const LOCKOUT_DURATION_MIN = 30;
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function signAccess(userId: string, email: string): string {
   const secret = process.env.JWT_SECRET;
-  if (!secret) throw new Error('JWT_SECRET not configured');
-  return jwt.sign({ sub: userId, email }, secret, { expiresIn: ACCESS_TOKEN_TTL });
+  if (!secret) throw new Error("JWT_SECRET not configured");
+  return jwt.sign({ sub: userId, email }, secret, {
+    expiresIn: ACCESS_TOKEN_TTL,
+  });
 }
 
+interface SessionMeta {
+  ipAddress?: string;
+  userAgent?: string;
+}
+
+// ─── Service ──────────────────────────────────────────────────────────────────
+
 export const authService = {
-  async register(email: string, password: string, name: string) {
+  /**
+   * Register a new user.
+   *
+   * GDPR Art. 7 — when `consent` is true, we record the exact timestamp the
+   * user accepted the Privacy Policy / Terms of Service so we can prove
+   * informed consent if ever challenged by a supervisory authority.
+   */
+  async register(
+    email: string,
+    password: string,
+    name: string,
+    consent: boolean,
+  ) {
+    // GDPR Art. 7 — explicit consent is required before processing personal data
+    if (!consent) {
+      throw new AppError(
+        400,
+        "You must accept the Privacy Policy to create an account.",
+        "GDPR_CONSENT_REQUIRED",
+      );
+    }
+
     const existing = await prisma.user.findUnique({ where: { email } });
-    if (existing) throw new AppError(409, 'Email already registered');
+    if (existing)
+      throw new AppError(409, "Email already registered", "AUTH_EMAIL_TAKEN");
 
     const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
+
     const user = await prisma.user.create({
-      data: { email, passwordHash, name },
-      select: { id: true, email: true, name: true, createdAt: true },
+      data: {
+        email,
+        passwordHash,
+        name,
+        consentedAt: new Date(), // GDPR Art. 7 — record consent timestamp
+      },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        createdAt: true,
+        consentedAt: true,
+      },
     });
+
+    logger.info("User registered", { userId: user.id, email: user.email });
+
     return user;
   },
 
-  async login(email: string, password: string) {
+  /**
+   * Authenticate a user and issue a token pair.
+   *
+   * ISO 27001 A.9.4.2 — accounts are locked after MAX_FAILED_ATTEMPTS
+   * consecutive failures and remain locked for LOCKOUT_DURATION_MIN minutes.
+   * The lockout counter is stored in the database so it survives server restarts
+   * and scales across multiple backend instances.
+   *
+   * We always run bcrypt.compare (even for non-existent users) to avoid
+   * timing-based user-enumeration attacks.
+   */
+  async login(email: string, password: string, session: SessionMeta = {}) {
     const user = await prisma.user.findUnique({ where: { email } });
-    // Constant-time comparison even if user doesn't exist
-    const hash = user?.passwordHash ?? '$2a$12$invalidhashfortimingnormalization';
+
+    // ── Account lockout check ────────────────────────────────────────────────
+    if (user?.lockedUntil && user.lockedUntil > new Date()) {
+      const minutesLeft = Math.ceil(
+        (user.lockedUntil.getTime() - Date.now()) / 60_000,
+      );
+
+      // Log the attempt against the locked account for SIEM/alerting
+      await prisma.auditLog.create({
+        data: {
+          action: "AUTH_LOGIN_LOCKED",
+          actor: user.id,
+          resourceId: user.id,
+          resourceType: "user",
+          metadata: { email, minutesLeft },
+          ipAddress: session.ipAddress ?? null,
+          userAgent: session.userAgent ?? null,
+        },
+      });
+
+      throw new AppError(
+        423,
+        `Account temporarily locked. Try again in ${minutesLeft} minute${minutesLeft !== 1 ? "s" : ""}.`,
+        "AUTH_ACCOUNT_LOCKED",
+      );
+    }
+
+    // ── Constant-time comparison (prevents timing-based enumeration) ─────────
+    const hash =
+      user?.passwordHash ?? "$2a$12$invalidhashfortimingnormalization";
     const valid = await bcrypt.compare(password, hash);
 
     if (!user || !valid) {
-      throw new AppError(401, 'Invalid email or password');
+      // ── Record failed attempt ────────────────────────────────────────────
+      if (user) {
+        const attempts = user.failedLoginAttempts + 1;
+        const shouldLock = attempts >= MAX_FAILED_ATTEMPTS;
+
+        await prisma.user.update({
+          where: { id: user.id },
+          data: {
+            failedLoginAttempts: attempts,
+            lockedUntil: shouldLock
+              ? new Date(Date.now() + LOCKOUT_DURATION_MIN * 60_000)
+              : null,
+          },
+        });
+
+        await prisma.auditLog.create({
+          data: {
+            action: shouldLock ? "AUTH_ACCOUNT_LOCKED" : "AUTH_LOGIN_FAILED",
+            actor: user.id,
+            resourceId: user.id,
+            resourceType: "user",
+            metadata: { email, attempt: attempts, locked: shouldLock },
+            ipAddress: session.ipAddress ?? null,
+            userAgent: session.userAgent ?? null,
+          },
+        });
+
+        if (shouldLock) {
+          logger.warn("Account locked after repeated failed logins", {
+            userId: user.id,
+            email,
+            attempts,
+          });
+        }
+      } else {
+        // Unknown email — still log for anomaly detection (ISO 27001 A.12.4)
+        logger.warn("Failed login attempt for unknown email", {
+          email,
+          ip: session.ipAddress,
+        });
+      }
+
+      throw new AppError(
+        401,
+        "Invalid email or password",
+        "AUTH_INVALID_CREDENTIALS",
+      );
     }
 
-    const accessToken = signAccess(user.id, user.email);
+    // ── Successful login — reset lockout counter ─────────────────────────────
+    if (user.failedLoginAttempts > 0 || user.lockedUntil) {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { failedLoginAttempts: 0, lockedUntil: null },
+      });
+    }
 
-    const refreshToken = randomBytes(40).toString('hex');
-    const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + REFRESH_TOKEN_TTL_DAYS);
+    // ── Issue token pair ─────────────────────────────────────────────────────
+    const accessToken = signAccess(user.id, user.email);
+    const refreshToken = randomBytes(40).toString("hex");
+    const expiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_DAYS * 864e5);
 
     await prisma.refreshToken.create({
-      data: { token: refreshToken, userId: user.id, expiresAt },
+      data: {
+        token: refreshToken,
+        userId: user.id,
+        expiresAt,
+        ipAddress: session.ipAddress ?? null,
+        userAgent: session.userAgent ?? null,
+      },
     });
+
+    // ── Audit successful login (ISO 27001 A.9.1.1) ───────────────────────────
+    await prisma.auditLog.create({
+      data: {
+        action: "AUTH_LOGIN_SUCCESS",
+        actor: user.id,
+        resourceId: user.id,
+        resourceType: "user",
+        metadata: { email },
+        ipAddress: session.ipAddress ?? null,
+        userAgent: session.userAgent ?? null,
+      },
+    });
+
+    logger.info("User logged in", { userId: user.id, ip: session.ipAddress });
 
     return {
       accessToken,
@@ -54,39 +226,102 @@ export const authService = {
     };
   },
 
-  async refresh(refreshToken: string) {
+  /**
+   * Rotate a refresh token (single-use).
+   * Returns a new access token + refresh token pair.
+   */
+  async refresh(refreshToken: string, session: SessionMeta = {}) {
     const record = await prisma.refreshToken.findUnique({
       where: { token: refreshToken },
       include: { user: true },
     });
 
     if (!record || record.expiresAt < new Date()) {
-      // Rotate invalid token to prevent reuse attacks
-      if (record) await prisma.refreshToken.delete({ where: { id: record.id } });
-      throw new AppError(401, 'Refresh token invalid or expired');
+      if (record)
+        await prisma.refreshToken.delete({ where: { id: record.id } });
+      throw new AppError(
+        401,
+        "Refresh token invalid or expired",
+        "AUTH_REFRESH_INVALID",
+      );
     }
 
-    // Rotate refresh token (one-time use)
+    // Rotate — delete old, issue new (single-use enforcement)
     await prisma.refreshToken.delete({ where: { id: record.id } });
 
-    const newRefresh = randomBytes(40).toString('hex');
-    const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + REFRESH_TOKEN_TTL_DAYS);
+    const newRefresh = randomBytes(40).toString("hex");
+    const expiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_DAYS * 864e5);
 
     await prisma.refreshToken.create({
-      data: { token: newRefresh, userId: record.userId, expiresAt },
+      data: {
+        token: newRefresh,
+        userId: record.userId,
+        expiresAt,
+        ipAddress: session.ipAddress ?? null,
+        userAgent: session.userAgent ?? null,
+      },
     });
 
     const accessToken = signAccess(record.user.id, record.user.email);
+
     return {
       accessToken,
       refreshToken: newRefresh,
-      user: { id: record.user.id, email: record.user.email, name: record.user.name },
+      user: {
+        id: record.user.id,
+        email: record.user.email,
+        name: record.user.name,
+      },
     };
   },
 
-  async logout(refreshToken: string) {
+  /**
+   * Invalidate a single refresh token (normal sign-out).
+   */
+  async logout(refreshToken: string): Promise<void> {
     await prisma.refreshToken.deleteMany({ where: { token: refreshToken } });
   },
 
+  /**
+   * ISO 27001 A.9.4 — Invalidate ALL active sessions for a user.
+   * Useful when a user suspects their account has been compromised, or when
+   * an admin revokes access.
+   */
+  async logoutAll(userId: string, session: SessionMeta = {}): Promise<number> {
+    const { count } = await prisma.refreshToken.deleteMany({
+      where: { userId },
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        action: "AUTH_LOGOUT_ALL",
+        actor: userId,
+        resourceId: userId,
+        resourceType: "user",
+        metadata: { sessionsRevoked: count },
+        ipAddress: session.ipAddress ?? null,
+        userAgent: session.userAgent ?? null,
+      },
+    });
+
+    logger.info("All sessions revoked", { userId, count });
+    return count;
+  },
+
+  /**
+   * Returns the number of active sessions for a user (useful for the UI).
+   */
+  async getActiveSessions(userId: string) {
+    return prisma.refreshToken.findMany({
+      where: { userId, expiresAt: { gt: new Date() } },
+      select: {
+        id: true,
+        ipAddress: true,
+        userAgent: true,
+        createdAt: true,
+        expiresAt: true,
+      },
+      orderBy: { createdAt: "desc" },
+    });
+  },
 };

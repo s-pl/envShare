@@ -11,9 +11,10 @@ interface AddSecretDialogProps {
   projectId: string;
   open: boolean;
   onClose: () => void;
+  filePath?: string;
 }
 
-export function AddSecretDialog({ projectId, open, onClose }: AddSecretDialogProps) {
+export function AddSecretDialog({ projectId, open, onClose, filePath }: AddSecretDialogProps) {
   const [key, setKey] = useState('');
   const [value, setValue] = useState('');
   const [isShared, setIsShared] = useState(false);
@@ -23,7 +24,7 @@ export function AddSecretDialog({ projectId, open, onClose }: AddSecretDialogPro
     e.preventDefault();
     if (!key.trim()) return;
     try {
-      await push.mutateAsync([{ key: key.trim().toUpperCase(), value, isShared }]);
+      await push.mutateAsync({ secrets: [{ key: key.trim().toUpperCase(), value, isShared }], filePath });
       toast.success(`Secret "${key.trim().toUpperCase()}" added`);
       setKey(''); setValue(''); setIsShared(false);
       onClose();

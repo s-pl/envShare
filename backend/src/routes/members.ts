@@ -20,16 +20,16 @@ membersRouter.post('/:projectId/members', async (req: AuthRequest, res, next) =>
       where: { projectId_userId: { projectId: req.params.projectId, userId: req.user!.id } },
     });
     if (!requester || requester.role === 'VIEWER' || requester.role === 'DEVELOPER') {
-      throw new AppError(403, 'Only project ADMINs can add members');
+      throw new AppError(403, 'Only project ADMINs can add members', 'FORBIDDEN_ROLE');
     }
 
     const target = await prisma.user.findUnique({ where: { email: body.email } });
-    if (!target) throw new AppError(404, `No user found with email: ${body.email}`);
+    if (!target) throw new AppError(404, `No user found with email: ${body.email}`, 'NOT_FOUND');
 
     const existing = await prisma.projectMember.findUnique({
       where: { projectId_userId: { projectId: req.params.projectId, userId: target.id } },
     });
-    if (existing) throw new AppError(409, `${body.email} is already a member`);
+    if (existing) throw new AppError(409, `${body.email} is already a member`, 'CONFLICT');
 
     const member = await prisma.projectMember.create({
       data: { projectId: req.params.projectId, userId: target.id, role: body.role },
@@ -46,7 +46,7 @@ membersRouter.get('/:projectId/members', async (req: AuthRequest, res, next) => 
     const access = await prisma.projectMember.findUnique({
       where: { projectId_userId: { projectId: req.params.projectId, userId: req.user!.id } },
     });
-    if (!access) throw new AppError(403, 'Access denied');
+    if (!access) throw new AppError(403, 'Access denied', 'FORBIDDEN');
 
     const members = await prisma.projectMember.findMany({
       where: { projectId: req.params.projectId },
@@ -64,7 +64,7 @@ membersRouter.delete('/:projectId/members/:userId', async (req: AuthRequest, res
       where: { projectId_userId: { projectId: req.params.projectId, userId: req.user!.id } },
     });
     if (!requester || requester.role !== 'ADMIN') {
-      throw new AppError(403, 'Only project ADMINs can remove members');
+      throw new AppError(403, 'Only project ADMINs can remove members', 'FORBIDDEN_ROLE');
     }
 
     await prisma.projectMember.delete({

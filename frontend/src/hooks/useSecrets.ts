@@ -9,6 +9,8 @@ export interface Secret {
   hasPersonalValue: boolean;
   version: number;
   updatedAt: string;
+  filePath: string;
+  environmentName: string;
 }
 
 export interface VersionEntry {
@@ -65,8 +67,8 @@ export function useDeleteSecret(projectId: string) {
 export function usePushSecrets(projectId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (secrets: { key: string; value: string; isShared: boolean }[]) =>
-      api.post<{ result: any }>(`/sync/${projectId}/push`, { secrets }).then(r => r.result),
+    mutationFn: ({ secrets, filePath }: { secrets: { key: string; value: string; isShared: boolean }[]; filePath?: string }) =>
+      api.post<{ result: any }>(`/sync/${projectId}/push`, { secrets, filePath }).then(r => r.result),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['secrets', projectId] }),
   });
 }

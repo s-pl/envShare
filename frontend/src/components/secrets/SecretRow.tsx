@@ -46,7 +46,7 @@ export function SecretRow({ secret, projectId, onHistory, onDelete }: SecretRowP
   const isSaving = setPersonal.isPending || setShared.isPending;
 
   return (
-    <tr className={`group transition-colors hover:bg-muted/30 ${isPending ? 'bg-amber-50/50' : ''}`}>
+    <tr className={`group transition-colors hover:bg-muted/30 ${isPending ? 'bg-muted/20' : ''}`}>
       {/* Key */}
       <td className="px-4 py-3 font-mono text-sm font-semibold text-foreground whitespace-nowrap">
         {secret.key}
@@ -76,7 +76,7 @@ export function SecretRow({ secret, projectId, onHistory, onDelete }: SecretRowP
               onKeyDown={e => { if (e.key === 'Enter') saveEdit(); if (e.key === 'Escape') cancelEdit(); }}
               className="h-7 w-full rounded border border-input bg-background px-2 text-xs font-mono focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             />
-            <Button size="icon" variant="ghost" className="h-6 w-6 shrink-0 text-emerald-600" onClick={saveEdit} disabled={isSaving}>
+            <Button size="icon" variant="ghost" className="h-6 w-6 shrink-0 text-foreground" onClick={saveEdit} disabled={isSaving}>
               <Check className="h-3 w-3" />
             </Button>
             <Button size="icon" variant="ghost" className="h-6 w-6 shrink-0" onClick={cancelEdit}>
@@ -84,7 +84,7 @@ export function SecretRow({ secret, projectId, onHistory, onDelete }: SecretRowP
             </Button>
           </div>
         ) : isPending ? (
-          <span className="text-amber-500 text-xs italic">not set yet</span>
+          <span className="text-muted-foreground text-xs italic">not set yet</span>
         ) : revealed ? (
           <span className="break-all">{secret.value || <span className="opacity-40 italic text-xs">empty</span>}</span>
         ) : (

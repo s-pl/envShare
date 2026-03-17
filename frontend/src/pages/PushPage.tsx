@@ -51,7 +51,7 @@ export function PushPage({ projectId, projectName }: PushPageProps) {
 
   async function handlePush() {
     try {
-      const result = await push.mutateAsync(entries);
+      const result = await push.mutateAsync({ secrets: entries });
       setResult(result);
       setEntries([]);
       setFileName('');

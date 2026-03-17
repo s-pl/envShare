@@ -1,9 +1,17 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
 COPY package*.json ./
-# Use npm install instead of npm ci — no lockfile present on first build
 RUN npm install
 COPY . .
+
+# Configurable at build time — defaults keep the standalone behaviour
+ARG VITE_API_URL=
+ARG VITE_BASE_PATH=/
+ARG VITE_BASENAME=/
+ENV VITE_API_URL=$VITE_API_URL
+ENV VITE_BASE_PATH=$VITE_BASE_PATH
+ENV VITE_BASENAME=$VITE_BASENAME
+
 RUN npm run build
 
 FROM nginx:alpine
