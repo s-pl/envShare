@@ -67,7 +67,20 @@ jobs:
           npx @yao-pkg/pkg bundle.mjs \
             --targets ${{ matrix.target }} \
             --output ${{ matrix.artifact }} \
-            --compress GZip
+            --compress GZip \
+            --no-bytecode \
+            --public
+
+      - name: Verify packaged artifact exists
+        working-directory: cli
+        shell: bash
+        run: |
+          if [ ! -f "${{ matrix.artifact }}" ]; then
+            echo "::error::Expected artifact not found: ${{ matrix.artifact }}"
+            echo "Generated files:"
+            ls -la
+            exit 1
+          fi
 
       # Ad-hoc signature — required on macOS since Ventura; without it the
       # kernel kills unsigned binaries immediately on launch.
