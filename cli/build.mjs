@@ -1,0 +1,49 @@
+#!/usr/bin/env node
+// Build script: bundles the CLI to a single ESM file ready for @yao-pkg/pkg
+import * as esbuild from 'esbuild';
+
+const version = process.argv[2] || '0.0.0';
+
+// esbuild inlines dynamic imports into the bundle, so ink's devtools.js (which
+// imports 'react-devtools-core') ends up as a top-level import that Node resolves
+// at startup — even though it's inside a dead branch (process.env.DEV === 'true').
+// This plugin intercepts that import and replaces it with an empty stub module,
+// making the bundle fully self-contained without needing react-devtools-core installed.
+const stubPlugin = {
+  name: 'stub-devtools',
+  setup(build) {
+    build.onResolve({ filter: /^react-devtools-core$/ }, args => ({
+      path: args.path,
+      namespace: 'stub',
+    }));
+    build.onLoad({ filter: /.*/, namespace: 'stub' }, () => ({
+      contents: 'export default null;',
+      loader: 'js',
+    }));
+  },
+};
+
+const result = await esbuild.build({
+  entryPoints: ['src/index.ts'],
+  bundle: true,
+  platform: 'node',
+  target: 'node20',
+  format: 'esm',
+  outfile: 'bundle.mjs',
+  external: ['fsevents'],
+  jsx: 'automatic',
+  plugins: [stubPlugin],
+  // CJS packages (like commander) use require() at runtime. When bundled to ESM,
+  // esbuild's CJS shim falls back to a no-op require stub that throws. Injecting
+  // a real require via createRequire fixes all dynamic require() calls in the bundle.
+  banner: {
+    js: `import { createRequire } from 'module'; const require = createRequire(import.meta.url);`,
+  },
+  define: {
+    '__ESAI_VERSION__': JSON.stringify(version),
+    'process.env.DEV': JSON.stringify('false'),
+  },
+  logLevel: 'info',
+});
+
+if (result.errors.length) process.exit(1);
