@@ -7,11 +7,30 @@ on:
       - 'cli/**'
 
 jobs:
-  release:
-    name: Build binaries and publish release
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
+  # ── One build job per platform ──────────────────────────────────────────────
+  build:
+    name: Build ${{ matrix.artifact }}
+    strategy:
+      fail-fast: false   # keep building other platforms if one fails
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: node20-linux-x64
+            artifact: esai-linux-x64
+
+          - os: windows-latest
+            target: node20-win-x64
+            artifact: esai-windows-x64.exe
+
+          - os: macos-13         # last Intel runner on GitHub Actions
+            target: node20-macos-x64
+            artifact: esai-macos-x64
+
+          - os: macos-latest     # macos-14 = Apple Silicon (M1/M2/M3)
+            target: node20-macos-arm64
+            artifact: esai-macos-arm64
+
+    runs-on: ${{ matrix.os }}
 
     steps:
       - uses: actions/checkout@v4
@@ -28,31 +47,71 @@ jobs:
 
       - name: Extract version
         id: meta
+        shell: bash
         working-directory: cli
         run: |
           VERSION=$(node -p "require('./package.json').version")
-          echo "version=$VERSION"       >> $GITHUB_OUTPUT
-          echo "tag=v$VERSION"          >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "tag=v$VERSION"    >> $GITHUB_OUTPUT
 
       - name: Bundle (esbuild → single ESM)
         working-directory: cli
         run: node build.mjs ${{ steps.meta.outputs.version }}
 
-      # pkg downloads Node.js binaries for each target — this step can take ~2 min on first run
-      - name: Package native binaries
+      # Each runner compiles only for its own platform → no cross-compilation,
+      # no Babel/import.meta issues, macOS binary signed natively by the runner.
+      - name: Package binary (pkg)
         working-directory: cli
+        shell: bash
         run: |
           npx @yao-pkg/pkg bundle.mjs \
-            --targets node20-win-x64,node20-macos-x64,node20-macos-arm64,node20-linux-x64 \
-            --output esai \
+            --targets ${{ matrix.target }} \
+            --output ${{ matrix.artifact }} \
             --compress GZip
 
-          # Rename for clarity
-          mv esai-win.exe     esai-windows-x64.exe
-          mv esai-macos       esai-macos-x64
-          mv esai-macos-arm64 esai-macos-arm64
-          mv esai-linux       esai-linux-x64
-          chmod +x esai-macos-x64 esai-macos-arm64 esai-linux-x64
+      # Ad-hoc signature — required on macOS since Ventura; without it the
+      # kernel kills unsigned binaries immediately on launch.
+      - name: Sign macOS binary
+        if: runner.os == 'macOS'
+        working-directory: cli
+        run: codesign --sign - ${{ matrix.artifact }}
+
+      - name: Mark as executable (Unix)
+        if: runner.os != 'Windows'
+        working-directory: cli
+        run: chmod +x ${{ matrix.artifact }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: cli/${{ matrix.artifact }}
+          if-no-files-found: error
+
+  # ── Publish GitHub Release once all binaries are ready ──────────────────────
+  release:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract version
+        id: meta
+        working-directory: cli
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "tag=v$VERSION"    >> $GITHUB_OUTPUT
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
 
       - name: Create / update GitHub Release
         uses: softprops/action-gh-release@v2
@@ -67,9 +126,9 @@ jobs:
             | Platform | File | Notes |
             |----------|------|-------|
             | Windows x64 | `esai-windows-x64.exe` | |
-            | macOS Intel | `esai-macos-x64` | run `chmod +x` after download |
-            | macOS Apple Silicon | `esai-macos-arm64` | run `chmod +x` after download |
-            | Linux x64 | `esai-linux-x64` | run `chmod +x` after download |
+            | macOS Intel | `esai-macos-x64` | `chmod +x` after download |
+            | macOS Apple Silicon | `esai-macos-arm64` | `chmod +x` after download |
+            | Linux x64 | `esai-linux-x64` | `chmod +x` after download |
 
             ### Quick install (macOS / Linux)
             ```bash
@@ -85,8 +144,4 @@ jobs:
             curl -L https://github.com/${{ github.repository }}/releases/download/${{ steps.meta.outputs.tag }}/esai-linux-x64 -o /usr/local/bin/esai
             chmod +x /usr/local/bin/esai
             ```
-          files: |
-            cli/esai-windows-x64.exe
-            cli/esai-macos-x64
-            cli/esai-macos-arm64
-            cli/esai-linux-x64
+          files: artifacts/*
