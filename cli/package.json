@@ -9,8 +9,8 @@
     "build": "tsc",
     "dev": "tsx src/index.ts",
     "lint": "eslint src --ext .ts",
-    "bundle": "esbuild src/index.ts --bundle --platform=node --target=node20 --format=cjs --outfile=bundle.cjs --external:fsevents --jsx=automatic",
-    "pkg:all": "pkg bundle.cjs --targets node20-win-x64,node20-macos-x64,node20-macos-arm64,node20-linux-x64 --output esai --compress GZip"
+    "bundle": "node build.mjs",
+    "pkg:all": "pkg bundle.mjs --targets node20-win-x64,node20-macos-x64,node20-macos-arm64,node20-linux-x64 --output esai --compress GZip"
   },
   "dependencies": {
     "@types/react": "^19.2.14",
