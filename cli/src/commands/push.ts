@@ -1,8 +1,9 @@
 import { Command } from 'commander';
 import { readFileSync, existsSync, readdirSync, statSync } from 'fs';
-import { join, relative, dirname } from 'path';
+import { join, relative } from 'path';
 import chalk from 'chalk';
 import ora from 'ora';
+import prompts from 'prompts';
 import { api, ApiError } from '../api.js';
 import { readProjectLink, readPushConfig, isAutoShared, isIgnored } from '../config.js';
 
@@ -48,43 +49,72 @@ function findEnvFiles(dir: string, root: string, depth = 0): string[] {
   return results;
 }
 
-async function pushFile(
-  filePath: string,
-  absPath: string,
-  projectId: string,
-  projectName: string,
-  pushCfg: ReturnType<typeof readPushConfig>,
-  dryRun: boolean,
-): Promise<boolean> {
+/** Parse and filter entries from a .env file, applying push config rules */
+function loadEntries(absPath: string, pushCfg: ReturnType<typeof readPushConfig>) {
   let entries = parseDotenv(readFileSync(absPath, 'utf-8'));
-  const ignored = entries.filter(e => isIgnored(e.key, pushCfg));
   entries = entries
     .filter(e => !isIgnored(e.key, pushCfg))
     .map(e => ({ ...e, isShared: e.isShared || isAutoShared(e.key, pushCfg) }));
+  return entries;
+}
 
-  if (!entries.length) {
-    console.log(chalk.dim(`  ${filePath}: no variables to push`));
-    return false;
-  }
+async function selectEnvFile(filePaths: string[], pushCfg: ReturnType<typeof readPushConfig>, root: string): Promise<string | null> {
+  if (filePaths.length === 1) return filePaths[0];
 
-  const shared   = entries.filter(e => e.isShared);
-  const personal = entries.filter(e => !e.isShared);
+  const choices = filePaths
+    .filter(fp => existsSync(join(root, fp)))
+    .map(fp => {
+      const count = loadEntries(join(root, fp), pushCfg).length;
+      return { title: `${fp}  ${chalk.dim(`(${count} vars)`)}`, value: fp };
+    });
 
-  if (dryRun) {
-    console.log(chalk.bold(`  ${filePath}`));
-    if (ignored.length)  console.log(chalk.dim(`    ignored  (${ignored.length}): ${ignored.map(e => e.key).join(', ')}`));
-    if (shared.length)   console.log(chalk.dim(`    shared   (${shared.length}): ${shared.map(e => e.key).join(', ')}`));
-    if (personal.length) console.log(chalk.dim(`    personal (${personal.length}): ${personal.map(e => e.key).join(', ')}`));
-    return true;
-  }
+  if (!choices.length) return null;
 
+  const { file } = await prompts({
+    type: 'select',
+    name: 'file',
+    message: 'Which .env file do you want to push?',
+    choices,
+  });
+  return file ?? null;
+}
+
+async function selectVariables(
+  entries: { key: string; value: string; isShared: boolean }[],
+): Promise<{ key: string; value: string; isShared: boolean }[]> {
+  if (!entries.length) return [];
+
+  const { selected } = await prompts({
+    type: 'multiselect',
+    name: 'selected',
+    message: 'Select variables to push  (space to toggle, a to toggle all, enter to confirm)',
+    choices: entries.map(e => ({
+      title: `${e.key.padEnd(32)} ${e.isShared ? chalk.blue('@shared') : chalk.dim('personal')}`,
+      value: e.key,
+      selected: true,
+    })),
+    instructions: false,
+    min: 1,
+  });
+
+  if (!selected) return [];
+  const selectedSet = new Set<string>(selected);
+  return entries.filter(e => selectedSet.has(e.key));
+}
+
+async function pushEntries(
+  filePath: string,
+  projectId: string,
+  entries: { key: string; value: string; isShared: boolean }[],
+): Promise<void> {
   const { result } = await api.post<{ result: { created: string[]; updated: string[]; sharedUpdated: string[] } }>(
     `/sync/${projectId}/push`,
     { secrets: entries, filePath },
   );
 
+  const personal = entries.filter(e => !e.isShared);
   const parts: string[] = [];
-  if (result.created.length)      parts.push(`+${result.created.length} new`);
+  if (result.created.length)       parts.push(`+${result.created.length} new`);
   if (result.sharedUpdated.length) parts.push(`${result.sharedUpdated.length} shared`);
   if (personal.length)             parts.push(`${personal.length} personal`);
 
@@ -92,13 +122,12 @@ async function pushFile(
     chalk.green(`  ✔ ${filePath}`) +
     chalk.dim(` — ${parts.join(', ') || `${entries.length} vars`}`),
   );
-  return true;
 }
 
 export const pushCommand = new Command('push')
-  .description('Upload .env file(s) to the project')
-  .argument('[file]', '.env file to push. Omit with --all to push every .env in the project.')
-  .option('--all', 'Discover and push every .env file found in the project tree')
+  .description('Upload .env variables to the project (interactive selection)')
+  .argument('[file]', '.env file to push')
+  .option('--all', 'Push all variables without interactive selection')
   .option('--dry-run', 'Preview what would be pushed without sending')
   .action(async (file: string | undefined, opts) => {
     const link = readProjectLink();
@@ -110,68 +139,100 @@ export const pushCommand = new Command('push')
     const pushCfg = readPushConfig();
     const root = process.cwd();
 
-    // ── Collect the list of files to push ────────────────────────────────────
+    // ── Collect candidate files ───────────────────────────────────────────────
     let filePaths: string[];
-
-    if (opts.all || !file) {
-      // Auto-discover all .env files in the project tree
-      filePaths = findEnvFiles(root, root);
-
-      if (!filePaths.length) {
-        // Fall back to defaultFile if nothing found
-        filePaths = [pushCfg.defaultFile];
-      }
-    } else {
+    if (file) {
       filePaths = [file];
+    } else {
+      filePaths = findEnvFiles(root, root);
+      if (!filePaths.length) filePaths = [pushCfg.defaultFile];
     }
 
-    // ── Dry run header ────────────────────────────────────────────────────────
+    console.log(chalk.bold(`\n  Push to ${link.projectName}\n`));
+
+    // ── Dry run ───────────────────────────────────────────────────────────────
     if (opts.dryRun) {
-      console.log(chalk.bold(`\n  Dry run → ${link.projectName} (${filePaths.length} file${filePaths.length !== 1 ? 's' : ''})\n`));
+      for (const fp of filePaths) {
+        const absPath = join(root, fp);
+        if (!existsSync(absPath)) { console.log(chalk.yellow(`  ⚠ skipped: ${fp} (not found)`)); continue; }
+        const entries = loadEntries(absPath, pushCfg);
+        if (!entries.length) { console.log(chalk.dim(`  ${fp}: no variables to push`)); continue; }
+        const shared   = entries.filter(e => e.isShared);
+        const personal = entries.filter(e => !e.isShared);
+        console.log(chalk.bold(`  ${fp}`));
+        if (shared.length)   console.log(chalk.dim(`    shared   (${shared.length}): ${shared.map(e => e.key).join(', ')}`));
+        if (personal.length) console.log(chalk.dim(`    personal (${personal.length}): ${personal.map(e => e.key).join(', ')}`));
+      }
+      console.log();
+      return;
     }
 
-    // ── Push each file ────────────────────────────────────────────────────────
-    let pushed = 0;
-    let failed = 0;
-
-    for (const fp of filePaths) {
-      const absPath = join(root, fp);
-      if (!existsSync(absPath)) {
-        console.log(chalk.yellow(`  ⚠ skipped: ${fp} (not found)`));
-        continue;
-      }
-
-      if (!opts.dryRun) {
-        const spinner = ora({ text: `Pushing ${fp}…`, prefixText: '' }).start();
+    // ── Interactive: pick file if multiple ────────────────────────────────────
+    let chosenFile: string | null;
+    if (opts.all) {
+      // Push all files non-interactively
+      let pushed = 0, failed = 0;
+      for (const fp of filePaths) {
+        const absPath = join(root, fp);
+        if (!existsSync(absPath)) { console.log(chalk.yellow(`  ⚠ skipped: ${fp} (not found)`)); continue; }
+        const entries = loadEntries(absPath, pushCfg);
+        if (!entries.length) { console.log(chalk.dim(`  ${fp}: no variables to push`)); continue; }
+        const spinner = ora({ text: `Pushing ${fp}…` }).start();
         try {
-          await pushFile(fp, absPath, link.projectId, link.projectName, pushCfg, false);
+          await pushEntries(fp, link.projectId, entries);
           spinner.stop();
           pushed++;
         } catch (err) {
           spinner.stop();
-          if (err instanceof ApiError) {
-            console.error(chalk.red(`  ✗ ${fp}: ${err.message}`));
-          } else {
-            console.error(chalk.red(`  ✗ ${fp}: unexpected error`));
-          }
+          if (err instanceof ApiError) console.error(chalk.red(`  ✗ ${fp}: ${err.message}`));
+          else console.error(chalk.red(`  ✗ ${fp}: unexpected error`));
           failed++;
         }
-      } else {
-        const ok = await pushFile(fp, absPath, link.projectId, link.projectName, pushCfg, true);
-        if (ok) pushed++;
       }
-    }
-
-    // ── Summary ───────────────────────────────────────────────────────────────
-    if (!opts.dryRun && filePaths.length > 1) {
+      if (filePaths.length > 1) {
+        console.log();
+        if (failed) console.log(chalk.yellow(`  ${pushed} pushed, ${failed} failed`));
+        else        console.log(chalk.dim(`  ${pushed} file${pushed !== 1 ? 's' : ''} pushed to ${link.projectName}`));
+      }
       console.log();
-      if (failed) {
-        console.log(chalk.yellow(`  ${pushed} pushed, ${failed} failed`));
-      } else {
-        console.log(chalk.dim(`  ${pushed} file${pushed !== 1 ? 's' : ''} pushed to ${link.projectName}`));
-      }
+      if (failed) process.exit(1);
+      return;
     }
-    console.log();
 
-    if (failed) process.exit(1);
+    // ── Interactive flow ──────────────────────────────────────────────────────
+    chosenFile = await selectEnvFile(filePaths, pushCfg, root);
+    if (!chosenFile) { console.log(chalk.yellow('  Aborted.')); process.exit(0); }
+
+    const absPath = join(root, chosenFile);
+    if (!existsSync(absPath)) {
+      console.error(chalk.red(`  File not found: ${chosenFile}`));
+      process.exit(1);
+    }
+
+    const allEntries = loadEntries(absPath, pushCfg);
+    if (!allEntries.length) {
+      console.log(chalk.dim(`  No variables to push in ${chosenFile}`));
+      console.log();
+      process.exit(0);
+    }
+
+    console.log(chalk.dim(`  Found ${allEntries.length} variable${allEntries.length !== 1 ? 's' : ''} in ${chosenFile}\n`));
+
+    // Let user pick which variables to push
+    const selected = await selectVariables(allEntries);
+    if (!selected.length) { console.log(chalk.yellow('\n  Nothing selected. Aborted.')); process.exit(0); }
+
+    console.log();
+    const spinner = ora({ text: `Pushing ${selected.length} variable${selected.length !== 1 ? 's' : ''}…` }).start();
+    try {
+      await pushEntries(chosenFile, link.projectId, selected);
+      spinner.stop();
+    } catch (err) {
+      spinner.stop();
+      if (err instanceof ApiError) console.error(chalk.red(`  ✗ ${err.message}`));
+      else console.error(chalk.red('  ✗ Unexpected error'));
+      process.exit(1);
+    }
+
+    console.log();
   });

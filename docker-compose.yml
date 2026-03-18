@@ -35,7 +35,7 @@ services:
       DATABASE_URL: postgresql://envsharesai:${POSTGRES_PASSWORD}@postgres:5432/envsharesai
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
       MASTER_ENCRYPTION_KEY: ${MASTER_ENCRYPTION_KEY:?MASTER_ENCRYPTION_KEY is required}
-      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:5173}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-*}
       PORT: 3000
       # ── GDPR Art. 5(1)(e) — Storage limitation ──────────────────────────────
       # Number of days to retain audit log entries (including IP addresses).
@@ -56,18 +56,6 @@ services:
       - internal
       - external
 
-  frontend:
-    build:
-      context: ./frontend
-    restart: unless-stopped
-    depends_on:
-      - backend
-    environment:
-      VITE_API_URL: ${API_URL:-http://localhost:3000}
-    ports:
-      - "5173:80"
-    networks:
-      - external
 
 volumes:
   postgres_data:
