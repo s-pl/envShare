@@ -87,7 +87,7 @@ jobs:
       - name: Sign macOS binary
         if: runner.os == 'macOS'
         working-directory: cli
-        run: codesign --sign - ${{ matrix.artifact }}
+        run: codesign --force --sign - ${{ matrix.artifact }}
 
       - name: Mark as executable (Unix)
         if: runner.os != 'Windows'
