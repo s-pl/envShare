@@ -27,13 +27,9 @@ services:
       - external
     depends_on:
       - backend
-      - frontend
 
   # Remove direct port exposure — Caddy is the only entry point
   backend:
-    ports: !reset []
-
-  frontend:
     ports: !reset []
 
 volumes:

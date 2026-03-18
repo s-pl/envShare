@@ -1,0 +1,101 @@
+name: Build & Release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'cli/**'
+
+jobs:
+  release:
+    name: Build binaries and publish release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: cli/package-lock.json
+
+      - name: Install dependencies
+        working-directory: cli
+        run: npm ci
+
+      - name: Extract version
+        id: meta
+        working-directory: cli
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION"       >> $GITHUB_OUTPUT
+          echo "tag=v$VERSION"          >> $GITHUB_OUTPUT
+
+      - name: Bundle (esbuild → single CJS)
+        working-directory: cli
+        run: |
+          npx esbuild src/index.ts \
+            --bundle \
+            --platform=node \
+            --target=node20 \
+            --format=cjs \
+            --outfile=bundle.cjs \
+            --external:fsevents \
+            --jsx=automatic \
+            "--define:__ESAI_VERSION__=\"${{ steps.meta.outputs.version }}\""
+
+      # pkg downloads Node.js binaries for each target — this step can take ~2 min on first run
+      - name: Package native binaries
+        working-directory: cli
+        run: |
+          npx @yao-pkg/pkg bundle.cjs \
+            --targets node20-win-x64,node20-macos-x64,node20-macos-arm64,node20-linux-x64 \
+            --output esai \
+            --compress GZip
+
+          # Rename for clarity
+          mv esai-win.exe     esai-windows-x64.exe
+          mv esai-macos       esai-macos-x64
+          mv esai-macos-arm64 esai-macos-arm64
+          mv esai-linux       esai-linux-x64
+          chmod +x esai-macos-x64 esai-macos-arm64 esai-linux-x64
+
+      - name: Create / update GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.tag }}
+          name: esai ${{ steps.meta.outputs.tag }}
+          body: |
+            ## esai ${{ steps.meta.outputs.tag }}
+
+            Standalone binaries — no Node.js required.
+
+            | Platform | File | Notes |
+            |----------|------|-------|
+            | Windows x64 | `esai-windows-x64.exe` | |
+            | macOS Intel | `esai-macos-x64` | run `chmod +x` after download |
+            | macOS Apple Silicon | `esai-macos-arm64` | run `chmod +x` after download |
+            | Linux x64 | `esai-linux-x64` | run `chmod +x` after download |
+
+            ### Quick install (macOS / Linux)
+            ```bash
+            # macOS Apple Silicon
+            curl -L https://github.com/${{ github.repository }}/releases/download/${{ steps.meta.outputs.tag }}/esai-macos-arm64 -o /usr/local/bin/esai
+            chmod +x /usr/local/bin/esai
+
+            # macOS Intel
+            curl -L https://github.com/${{ github.repository }}/releases/download/${{ steps.meta.outputs.tag }}/esai-macos-x64 -o /usr/local/bin/esai
+            chmod +x /usr/local/bin/esai
+
+            # Linux
+            curl -L https://github.com/${{ github.repository }}/releases/download/${{ steps.meta.outputs.tag }}/esai-linux-x64 -o /usr/local/bin/esai
+            chmod +x /usr/local/bin/esai
+            ```
+          files: |
+            cli/esai-windows-x64.exe
+            cli/esai-macos-x64
+            cli/esai-macos-arm64
+            cli/esai-linux-x64

@@ -81,3 +81,38 @@ projectsCommand
       throw err;
     }
   });
+
+projectsCommand
+  .command('remove <email>')
+  .description('Remove a member from the project')
+  .action(async (email: string) => {
+    const link = readProjectLink();
+    if (!link) {
+      console.error(chalk.red('  No project linked. Run `esai init` first.'));
+      process.exit(1);
+    }
+
+    try {
+      // Get members to find userId by email
+      const { members } = await api.get<{ members: any[] }>(`/projects/${link.projectId}/members`);
+      const target = members.find((m: any) => m.user.email === email);
+      if (!target) {
+        console.error(chalk.red(`  No member with email: ${email}`));
+        process.exit(1);
+      }
+
+      const { confirmed } = await prompts({
+        type: 'confirm',
+        name: 'confirmed',
+        message: `Remove ${email} (${target.role}) from ${link.projectName}?`,
+        initial: false,
+      });
+      if (!confirmed) { console.log(chalk.dim('  Aborted.')); process.exit(0); }
+
+      await api.delete(`/projects/${link.projectId}/members/${target.user.id}`);
+      console.log(chalk.green(`  Removed ${email} from ${link.projectName}`));
+    } catch (err) {
+      if (err instanceof ApiError) { console.error(chalk.red(`  Error: ${err.message}`)); process.exit(1); }
+      throw err;
+    }
+  });
