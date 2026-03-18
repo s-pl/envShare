@@ -22,7 +22,7 @@ jobs:
             target: node20-win-x64
             artifact: esai-windows-x64.exe
 
-          - os: macos-13         # last Intel runner on GitHub Actions
+          - os: macos-latest     # use supported macOS runner label
             target: node20-macos-x64
             artifact: esai-macos-x64
 
