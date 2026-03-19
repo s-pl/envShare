@@ -54,17 +54,17 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "tag=v$VERSION"    >> $GITHUB_OUTPUT
 
-      - name: Bundle (esbuild → single ESM)
+      - name: Bundle (esbuild → ESM + CJS for pkg)
         working-directory: cli
         run: node build.mjs ${{ steps.meta.outputs.version }}
 
       # Each runner compiles only for its own platform → no cross-compilation,
-      # no Babel/import.meta issues, macOS binary signed natively by the runner.
+      # macOS binary signed natively by the runner.
       - name: Package binary (pkg)
         working-directory: cli
         shell: bash
         run: |
-          npx @yao-pkg/pkg bundle.mjs \
+          npx @yao-pkg/pkg pkg-entry.cjs \
             --targets ${{ matrix.target }} \
             --output ${{ matrix.artifact }} \
             --compress GZip \
