@@ -15,14 +15,14 @@ export interface ProjectLink {
 }
 
 export const config = new Conf<CliConfig>({
-  projectName: 'envsharesai',
+  projectName: 'envshare',
   defaults: { apiUrl: 'http://localhost:3000', refreshToken: '', userId: '', email: '' },
 });
 
 let _accessToken: string | null = null;
 export function setAccessToken(token: string): void { _accessToken = token; }
 export function getAccessToken(): string | null { return _accessToken; }
-export function getApiUrl(): string { return process.env.ESAI_API_URL || config.get('apiUrl'); }
+export function getApiUrl(): string { return process.env.ENVSHARE_API_URL || config.get('apiUrl'); }
 export function isAuthenticated(): boolean { return !!config.get('refreshToken'); }
 export function clearAuth(): void {
   config.set('refreshToken', '');
@@ -32,17 +32,17 @@ export function clearAuth(): void {
 }
 
 export function readProjectLink(): ProjectLink | null {
-  const path = join(process.cwd(), '.esai.json');
+  const path = join(process.cwd(), '.envshare.json');
   if (!existsSync(path)) return null;
   try { return JSON.parse(readFileSync(path, 'utf-8')) as ProjectLink; }
   catch { return null; }
 }
 
 export function writeProjectLink(link: ProjectLink): void {
-  writeFileSync(join(process.cwd(), '.esai.json'), JSON.stringify(link, null, 2));
+  writeFileSync(join(process.cwd(), '.envshare.json'), JSON.stringify(link, null, 2));
 }
 
-// ─── Push config (.esai.config.json) ─────────────────────────────────────────
+// ─── Push config (.envshare.config.json) ─────────────────────────────────────────
 
 export interface PushConfig {
   defaultFile: string;
@@ -59,14 +59,14 @@ const DEFAULT_PUSH_CONFIG: PushConfig = {
 };
 
 export function readPushConfig(): PushConfig {
-  const path = join(process.cwd(), '.esai.config.json');
+  const path = join(process.cwd(), '.envshare.config.json');
   if (!existsSync(path)) return { ...DEFAULT_PUSH_CONFIG };
   try { return { ...DEFAULT_PUSH_CONFIG, ...JSON.parse(readFileSync(path, 'utf-8')) }; }
   catch { return { ...DEFAULT_PUSH_CONFIG }; }
 }
 
 export function writePushConfig(cfg: PushConfig): void {
-  writeFileSync(join(process.cwd(), '.esai.config.json'), JSON.stringify(cfg, null, 2));
+  writeFileSync(join(process.cwd(), '.envshare.config.json'), JSON.stringify(cfg, null, 2));
 }
 
 /** Returns true if key matches a pattern like *_URL, DB_*, *HOST* */

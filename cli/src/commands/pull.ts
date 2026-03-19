@@ -1,5 +1,5 @@
 /**
- * esai pull
+ * envshare pull
  * Downloads secrets and writes each environment to its correct file path.
  * Secrets with no environment default to .env (or the --output file).
  */
@@ -33,7 +33,7 @@ function buildEnvFile(secrets: PulledSecret[], projectName: string): string {
     const version = s.version ? `  # v${s.version}` : '';
     const tag     = s.isShared ? `  # @shared${version}` : version;
     const warn    = !s.isShared && !s.hasPersonalValue
-      ? `  # ⚠ pending — run: esai set ${s.key} "your-value"`
+      ? `  # ⚠ pending — run: envshare set ${s.key} "your-value"`
       : '';
     lines.push(`${s.key}=${s.value || ''}${tag}${warn}`);
   }
@@ -48,7 +48,7 @@ export const pullCommand = new Command('pull')
   .action(async (opts) => {
     const link = readProjectLink();
     if (!link) {
-      console.error(chalk.red('  No project linked. Run `esai init` first.'));
+      console.error(chalk.red('  No project linked. Run `envshare init` first.'));
       process.exit(1);
     }
 
@@ -88,7 +88,7 @@ export const pullCommand = new Command('pull')
       const pending = secrets.filter(s => !s.isShared && !s.hasPersonalValue);
       if (pending.length) {
         console.log(chalk.yellow(`\n  ⚠  ${pending.length} variable(s) need your personal value:`));
-        pending.forEach(s => console.log(chalk.dim(`     esai set ${s.key} "your-value"`)));
+        pending.forEach(s => console.log(chalk.dim(`     envshare set ${s.key} "your-value"`)));
       }
 
       console.log();

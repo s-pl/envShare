@@ -40,7 +40,7 @@ const result = await esbuild.build({
     js: `import { createRequire } from 'module'; const require = createRequire(import.meta.url);`,
   },
   define: {
-    '__ESAI_VERSION__': JSON.stringify(version),
+    '__ENVSHARE_VERSION__': JSON.stringify(version),
     'process.env.DEV': JSON.stringify('false'),
   },
   logLevel: 'info',

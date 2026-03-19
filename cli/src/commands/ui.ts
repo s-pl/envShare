@@ -6,7 +6,7 @@ export const uiCommand = new Command('ui')
   .description('Launch the interactive terminal UI')
   .action(async () => {
     if (!isAuthenticated()) {
-      console.error(chalk.red('  Not logged in. Run `esai login` first.'));
+      console.error(chalk.red('  Not logged in. Run `envshare login` first.'));
       process.exit(1);
     }
 

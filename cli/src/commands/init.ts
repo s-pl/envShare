@@ -14,7 +14,7 @@ export const initCommand = new Command('init')
       const { projects } = await api.get<{ projects: any[] }>('/projects');
 
       if (!projects.length) {
-        console.log(chalk.yellow('  No projects found. Run `esai project create` first.'));
+        console.log(chalk.yellow('  No projects found. Run `envshare project create` first.'));
         process.exit(1);
       }
 
@@ -29,12 +29,12 @@ export const initCommand = new Command('init')
 
       const project = projects.find(p => p.id === projectId);
       writeFileSync(
-        join(process.cwd(), '.esai.json'),
+        join(process.cwd(), '.envshare.json'),
         JSON.stringify({ projectId, projectName: project.name }, null, 2),
       );
 
       console.log(chalk.green(`\n  Linked to ${project.name}`));
-      console.log(chalk.dim('  Run `esai push` to upload your .env\n'));
+      console.log(chalk.dim('  Run `envshare push` to upload your .env\n'));
     } catch (err) {
       if (err instanceof ApiError) { console.error(chalk.red(`  Error: ${err.message}`)); process.exit(1); }
       throw err;

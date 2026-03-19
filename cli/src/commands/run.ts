@@ -1,10 +1,10 @@
 /**
- * esai run -- <command>
+ * envshare run -- <command>
  * Fetches secrets, injects them as environment variables, and runs a subprocess.
  * Secrets are NEVER written to disk — injected only into the child process env.
  *
- * Example: esai run -- node server.js
- *          esai run -- docker-compose up
+ * Example: envshare run -- node server.js
+ *          envshare run -- docker-compose up
  */
 import { Command } from 'commander';
 import { spawn } from 'child_process';
@@ -20,12 +20,12 @@ export const runCommand = new Command('run')
   .action(async (args: string[]) => {
     const link = readProjectLink();
     if (!link) {
-      console.error(chalk.red('  No project linked. Run `esai init` first.'));
+      console.error(chalk.red('  No project linked. Run `envshare init` first.'));
       process.exit(1);
     }
 
     if (args.length === 0) {
-      console.error(chalk.red('  No command specified. Usage: esai run -- <command>'));
+      console.error(chalk.red('  No command specified. Usage: envshare run -- <command>'));
       process.exit(1);
     }
 

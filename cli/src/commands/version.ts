@@ -7,9 +7,9 @@ import { config, getApiUrl, isAuthenticated, readProjectLink } from '../config.j
 
 /** In dev: reads package.json. In a pkg binary: uses the build-time constant injected by esbuild. */
 function getCliVersion(): { version: string; description: string } {
-  // Injected by esbuild via --define:__ESAI_VERSION__ at bundle time
-  if (typeof __ESAI_VERSION__ !== 'undefined' && __ESAI_VERSION__) {
-    return { version: __ESAI_VERSION__, description: 'envShare CLI — sync secrets to .env files' };
+  // Injected by esbuild via --define:__ENVSHARE_VERSION__ at bundle time
+  if (typeof __ENVSHARE_VERSION__ !== 'undefined' && __ENVSHARE_VERSION__) {
+    return { version: __ENVSHARE_VERSION__, description: 'envShare CLI — sync secrets to .env files' };
   }
   // Dev fallback: read from package.json on disk
   try {
@@ -29,7 +29,7 @@ export const versionCommand = new Command('version')
     const line = chalk.dim('─'.repeat(48));
 
     console.log();
-    console.log(`  ${chalk.bold.blue('esai')}  ${chalk.bold(version)}`);
+    console.log(`  ${chalk.bold.blue('envshare')}  ${chalk.bold(version)}`);
     console.log(`  ${chalk.dim(description)}`);
     console.log(`  ${line}`);
 

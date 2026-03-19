@@ -36,7 +36,7 @@ async function request<T>(
   // Auto-refresh on 401
   if (res.status === 401 && !retried) {
     const refreshToken = config.get('refreshToken');
-    if (!refreshToken) throw new ApiError(401, 'Not authenticated. Run: esai login');
+    if (!refreshToken) throw new ApiError(401, 'Not authenticated. Run: envshare login');
 
     const refreshRes = await fetch(`${getApiUrl()}/api/v1/auth/refresh`, {
       method: 'POST',
@@ -46,7 +46,7 @@ async function request<T>(
 
     if (!refreshRes.ok) {
       config.set('refreshToken', '');
-      throw new ApiError(401, 'Session expired. Please login again: esai login');
+      throw new ApiError(401, 'Session expired. Please login again: envshare login');
     }
 
     const { accessToken: newAccess, refreshToken: newRefresh } = await refreshRes.json() as any;

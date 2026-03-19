@@ -29,7 +29,7 @@ export const registerCommand = new Command('register')
         password: answers.password,
       });
       console.log(chalk.green(`\n  Account created: ${user.email}`));
-      console.log(chalk.dim('  Run `esai login` to authenticate.\n'));
+      console.log(chalk.dim('  Run `envshare login` to authenticate.\n'));
     } catch (err) {
       if (err instanceof ApiError) {
         console.error(chalk.red(`\n  Error: ${err.message}`));
