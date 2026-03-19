@@ -1,6 +1,6 @@
 {
   "name": "envshare",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "envShare CLI — sync secrets to .env files",
   "bin": {
     "envshare": "dist/index.js"
