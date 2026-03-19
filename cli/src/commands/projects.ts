@@ -29,7 +29,7 @@ projectsCommand
         slug: answers.slug,
       });
       console.log(chalk.green(`\n  Project "${project.name}" created.\n`));
-      console.log(chalk.dim('  Run `esai init` in your project folder to link it.\n'));
+      console.log(chalk.dim('  Run `envshare init` in your project folder to link it.\n'));
     } catch (err) {
       if (err instanceof ApiError) { console.error(chalk.red(`\n  Error: ${err.message}`)); process.exit(1); }
       throw err;
@@ -43,7 +43,7 @@ projectsCommand
   .action(async (email: string, opts) => {
     const link = readProjectLink();
     if (!link) {
-      console.error(chalk.red('  No project linked. Run `esai init` first.'));
+      console.error(chalk.red('  No project linked. Run `envshare init` first.'));
       process.exit(1);
     }
 
@@ -65,7 +65,7 @@ projectsCommand
   .action(async () => {
     const link = readProjectLink();
     if (!link) {
-      console.error(chalk.red('  No project linked. Run `esai init` first.'));
+      console.error(chalk.red('  No project linked. Run `envshare init` first.'));
       process.exit(1);
     }
 
@@ -88,7 +88,7 @@ projectsCommand
   .action(async (email: string) => {
     const link = readProjectLink();
     if (!link) {
-      console.error(chalk.red('  No project linked. Run `esai init` first.'));
+      console.error(chalk.red('  No project linked. Run `envshare init` first.'));
       process.exit(1);
     }
 

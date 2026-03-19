@@ -132,7 +132,7 @@ export const pushCommand = new Command('push')
   .action(async (file: string | undefined, opts) => {
     const link = readProjectLink();
     if (!link) {
-      console.error(chalk.red('  No project linked. Run `esai init` first.'));
+      console.error(chalk.red('  No project linked. Run `envshare init` first.'));
       process.exit(1);
     }
 

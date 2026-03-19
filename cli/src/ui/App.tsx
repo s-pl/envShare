@@ -1,5 +1,5 @@
 /**
- * esai ui — Terminal UI
+ * envshare ui — Terminal UI
  * Screens: Projects → Project (Secrets | Push | Config | Members)
  */
 import React, { useState, useEffect, useCallback } from 'react';
@@ -497,7 +497,7 @@ function ConfigTab() {
   };
 
   const sectionHelp: Record<ConfigSection, string> = {
-    defaultFile:    'File used by esai push when no file is specified',
+    defaultFile:    'File used by envshare push when no file is specified',
     sharedKeys:     'These keys are always shared — e.g. DATABASE_URL',
     sharedPatterns: 'Glob patterns: *_URL, DB_*, *HOST* — auto-shared on push',
     ignoredKeys:    'Never pushed — e.g. LOCAL_*, DEBUG',
@@ -507,10 +507,10 @@ function ConfigTab() {
     <Box flexDirection="column">
       <Box paddingLeft={2} marginBottom={1}>
         <Text color="gray">Push configuration for this directory. Saved to </Text>
-        <Text color="cyan">.esai.config.json</Text>
+        <Text color="cyan">.envshare.config.json</Text>
       </Box>
 
-      {saved && <Box paddingLeft={2} marginBottom={1}><Text color="green">✔ Saved to .esai.config.json</Text></Box>}
+      {saved && <Box paddingLeft={2} marginBottom={1}><Text color="green">✔ Saved to .envshare.config.json</Text></Box>}
 
       {sections.map(sec => {
         const active = sec === section;
@@ -587,7 +587,7 @@ function MembersTab({ project }: { project: Project }) {
       ))}
       <Box paddingLeft={2} marginTop={1}>
         <Text color="gray">To invite: </Text>
-        <Text color="cyan">esai project invite email@example.com</Text>
+        <Text color="cyan">envshare project invite email@example.com</Text>
       </Box>
       <Footer hints={['[B/Esc] back']} />
     </Box>
@@ -641,7 +641,7 @@ function ProjectsScreen({
       {projects.length === 0 ? (
         <Box paddingLeft={2}>
           <Text color="yellow">No projects found. Run </Text>
-          <Text color="cyan">esai project create</Text>
+          <Text color="cyan">envshare project create</Text>
           <Text color="yellow"> first.</Text>
         </Box>
       ) : (

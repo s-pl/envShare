@@ -1,6 +1,6 @@
 /**
- * esai set KEY value  — set your personal value for a secret
- * esai set KEY value --shared — update the shared value (syncs to all)
+ * envshare set KEY value  — set your personal value for a secret
+ * envshare set KEY value --shared — update the shared value (syncs to all)
  */
 import { Command } from 'commander';
 import chalk from 'chalk';
@@ -15,7 +15,7 @@ export const setCommand = new Command('set')
   .action(async (key: string, value: string, opts) => {
     const link = readProjectLink();
     if (!link) {
-      console.error(chalk.red('  No project linked. Run `esai init` first.'));
+      console.error(chalk.red('  No project linked. Run `envshare init` first.'));
       process.exit(1);
     }
 

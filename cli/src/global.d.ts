@@ -1,2 +1,2 @@
-// Injected by esbuild at bundle time via --define:__ESAI_VERSION__
-declare const __ESAI_VERSION__: string | undefined;
+// Injected by esbuild at bundle time via --define:__ENVSHARE_VERSION__
+declare const __ENVSHARE_VERSION__: string | undefined;

@@ -37,7 +37,7 @@ orgsCommand
   .action(async () => {
     try {
       const { organizations } = await api.get<{ organizations: any[] }>('/organizations');
-      if (!organizations.length) { console.log(chalk.dim('  No organizations yet. Run `esai org create`.')); return; }
+      if (!organizations.length) { console.log(chalk.dim('  No organizations yet. Run `envshare org create`.')); return; }
       organizations.forEach((o) => console.log(`  ${chalk.cyan(o.name)}  ${chalk.dim(o.id)}`));
     } catch (err) {
       if (err instanceof ApiError) { console.error(chalk.red(`  Error: ${err.message}`)); process.exit(1); }
