@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { Command } from 'commander';
+import chalk from 'chalk';
 import { urlCommand }      from './commands/url.js';
 import { registerCommand } from './commands/register.js';
 import { loginCommand }    from './commands/login.js';
@@ -14,6 +15,7 @@ import { uiCommand }       from './commands/ui.js';
 import { versionCommand }  from './commands/version.js';
 import { installCommand }  from './commands/install.js';
 import { updateCommand }   from './commands/update.js';
+import { ApiError }        from './api.js';
 
 const program = new Command();
 program.name('envshare').description('envShare / Secrets management CLI').version('1.0.0');
@@ -33,4 +35,17 @@ program.addCommand(setCommand);
 program.addCommand(runCommand);
 program.addCommand(uiCommand);
 
-program.parse(process.argv);
+void program.parseAsync(process.argv).catch((err: unknown) => {
+  if (err instanceof ApiError) {
+    console.error(chalk.red(`\n  Error: ${err.message}`));
+    process.exit(1);
+  }
+
+  if (err instanceof Error) {
+    console.error(chalk.red(`\n  Unexpected error: ${err.message}`));
+    process.exit(1);
+  }
+
+  console.error(chalk.red('\n  Unexpected error occurred.'));
+  process.exit(1);
+});
