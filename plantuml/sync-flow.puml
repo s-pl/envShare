@@ -1,0 +1,35 @@
+@startuml
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName Courier
+
+title envShare - Secret Sync Flow (Push and Pull)
+
+actor Developer
+participant "CLI (esai)" as CLI
+participant "Backend API" as API
+database "PostgreSQL" as DB
+
+== Push ==
+Developer -> CLI : esai push .env
+CLI -> CLI : Parse .env and classify keys
+CLI -> API : POST /api/v1/sync/push
+API -> API : Authorize user and project
+API -> API : Encrypt key names and values
+API -> DB : Upsert secrets / versions / personal values
+DB --> API : Commit transaction
+API --> CLI : Push result summary
+CLI --> Developer : Show changed keys
+
+== Pull ==
+Developer -> CLI : esai pull
+CLI -> API : GET /api/v1/sync/pull
+API -> API : Authorize user and project
+API -> DB : Read project secrets + personal values
+DB --> API : Encrypted records
+API -> API : Decrypt and merge final values
+API --> CLI : Plain key/value payload
+CLI -> CLI : Render .env content
+CLI --> Developer : Write target file
+
+@enduml

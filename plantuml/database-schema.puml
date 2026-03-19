@@ -1,0 +1,140 @@
+@startuml
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName Courier
+hide circle
+
+title envShare - Database Schema (Prisma/PostgreSQL)
+
+entity "users" as users {
+  * id : cuid
+  --
+  email : string <<unique>>
+  password_hash : string
+  name : string
+  consented_at : timestamptz?
+  failed_login_attempts : int
+  locked_until : timestamptz?
+  created_at : timestamptz
+  updated_at : timestamptz
+}
+
+entity "projects" as projects {
+  * id : cuid
+  --
+  slug : string <<unique>>
+  name : string
+  encrypted_key : string
+  created_at : timestamptz
+  updated_at : timestamptz
+}
+
+entity "project_members" as project_members {
+  * id : cuid
+  --
+  project_id : cuid <<fk>>
+  user_id : cuid <<fk>>
+  role : enum(ProjectRole)
+  created_at : timestamptz
+  --
+  unique(project_id, user_id)
+}
+
+entity "environments" as environments {
+  * id : cuid
+  --
+  project_id : cuid <<fk>>
+  name : string
+  file_path : string
+  description : string?
+  created_at : timestamptz
+  updated_at : timestamptz
+  --
+  unique(project_id, name)
+  unique(project_id, file_path)
+}
+
+entity "secrets" as secrets {
+  * id : cuid
+  --
+  project_id : cuid <<fk>>
+  environment_id : cuid? <<fk>>
+  key_hash : string
+  encrypted_key : string
+  key_iv : string
+  key_tag : string
+  is_shared : boolean
+  shared_encrypted_value : string?
+  shared_value_iv : string?
+  shared_value_tag : string?
+  comment : string?
+  version : int
+  created_at : timestamptz
+  updated_at : timestamptz
+  --
+  unique(project_id, key_hash)
+}
+
+entity "user_secret_values" as user_secret_values {
+  * id : cuid
+  --
+  secret_id : cuid <<fk>>
+  user_id : cuid <<fk>>
+  encrypted_value : string
+  value_iv : string
+  value_tag : string
+  updated_at : timestamptz
+  --
+  unique(secret_id, user_id)
+}
+
+entity "secret_versions" as secret_versions {
+  * id : cuid
+  --
+  secret_id : cuid <<fk>>
+  user_id : cuid? <<fk>>
+  action : string
+  is_shared : boolean
+  shared_encrypted_value : string?
+  shared_value_iv : string?
+  shared_value_tag : string?
+  version : int
+  created_at : timestamptz
+}
+
+entity "refresh_tokens" as refresh_tokens {
+  * id : cuid
+  --
+  token : string <<unique>>
+  user_id : cuid <<fk>>
+  expires_at : timestamptz
+  user_agent : string?
+  ip_address : string?
+  created_at : timestamptz
+}
+
+entity "audit_logs" as audit_logs {
+  * id : cuid
+  --
+  action : string
+  actor : string
+  resource_id : string
+  resource_type : string
+  metadata : json?
+  ip_address : string?
+  user_agent : string?
+  created_at : timestamptz
+}
+
+users ||--o{ project_members
+projects ||--o{ project_members
+projects ||--o{ environments
+projects ||--o{ secrets
+environments ||--o{ secrets
+users ||--o{ user_secret_values
+secrets ||--o{ user_secret_values
+users ||--o{ secret_versions
+secrets ||--o{ secret_versions
+users ||--o{ refresh_tokens
+
+@enduml
