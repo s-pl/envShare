@@ -11,24 +11,24 @@ jobs:
   build:
     name: Build ${{ matrix.artifact }}
     strategy:
-      fail-fast: false   # keep building other platforms if one fails
+      fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
             target: node20-linux-x64
-            artifact: esai-linux-x64
+            artifact: envshare-linux-x64
 
           - os: windows-latest
             target: node20-win-x64
-            artifact: esai-windows-x64.exe
+            artifact: envshare-windows-x64.exe
 
-          - os: macos-latest     # use supported macOS runner label
+          - os: macos-latest
             target: node20-macos-x64
-            artifact: esai-macos-x64
+            artifact: envshare-macos-x64
 
-          - os: macos-latest     # macos-14 = Apple Silicon (M1/M2/M3)
+          - os: macos-latest
             target: node20-macos-arm64
-            artifact: esai-macos-arm64
+            artifact: envshare-macos-arm64
 
     runs-on: ${{ matrix.os }}
 
@@ -56,10 +56,10 @@ jobs:
 
       - name: Bundle (esbuild → ESM + CJS for pkg)
         working-directory: cli
+        env:
+          GITHUB_REPO: ${{ github.repository }}
         run: node build.mjs ${{ steps.meta.outputs.version }}
 
-      # Each runner compiles only for its own platform → no cross-compilation,
-      # macOS binary signed natively by the runner.
       - name: Package binary (pkg)
         working-directory: cli
         shell: bash
@@ -77,13 +77,10 @@ jobs:
         run: |
           if [ ! -f "${{ matrix.artifact }}" ]; then
             echo "::error::Expected artifact not found: ${{ matrix.artifact }}"
-            echo "Generated files:"
             ls -la
             exit 1
           fi
 
-      # Ad-hoc signature — required on macOS since Ventura; without it the
-      # kernel kills unsigned binaries immediately on launch.
       - name: Sign macOS binary
         if: runner.os == 'macOS'
         working-directory: cli
@@ -130,31 +127,37 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.meta.outputs.tag }}
-          name: esai ${{ steps.meta.outputs.tag }}
+          name: envshare ${{ steps.meta.outputs.tag }}
           body: |
-            ## esai ${{ steps.meta.outputs.tag }}
+            ## envshare ${{ steps.meta.outputs.tag }}
 
             Standalone binaries — no Node.js required.
 
-            | Platform | File | Notes |
-            |----------|------|-------|
-            | Windows x64 | `esai-windows-x64.exe` | |
-            | macOS Intel | `esai-macos-x64` | `chmod +x` after download |
-            | macOS Apple Silicon | `esai-macos-arm64` | `chmod +x` after download |
-            | Linux x64 | `esai-linux-x64` | `chmod +x` after download |
+            | Platform | File |
+            |----------|------|
+            | Windows x64 | `envshare-windows-x64.exe` |
+            | macOS Intel | `envshare-macos-x64` |
+            | macOS Apple Silicon | `envshare-macos-arm64` |
+            | Linux x64 | `envshare-linux-x64` |
 
-            ### Quick install (macOS / Linux)
+            ### Quick install
+
             ```bash
             # macOS Apple Silicon
-            curl -L https://github.com/${{ github.repository }}/releases/download/${{ steps.meta.outputs.tag }}/esai-macos-arm64 -o /usr/local/bin/esai
-            chmod +x /usr/local/bin/esai
+            curl -L https://github.com/${{ github.repository }}/releases/download/${{ steps.meta.outputs.tag }}/envshare-macos-arm64 -o ~/.local/bin/envshare
+            chmod +x ~/.local/bin/envshare
 
             # macOS Intel
-            curl -L https://github.com/${{ github.repository }}/releases/download/${{ steps.meta.outputs.tag }}/esai-macos-x64 -o /usr/local/bin/esai
-            chmod +x /usr/local/bin/esai
+            curl -L https://github.com/${{ github.repository }}/releases/download/${{ steps.meta.outputs.tag }}/envshare-macos-x64 -o ~/.local/bin/envshare
+            chmod +x ~/.local/bin/envshare
 
             # Linux
-            curl -L https://github.com/${{ github.repository }}/releases/download/${{ steps.meta.outputs.tag }}/esai-linux-x64 -o /usr/local/bin/esai
-            chmod +x /usr/local/bin/esai
+            curl -L https://github.com/${{ github.repository }}/releases/download/${{ steps.meta.outputs.tag }}/envshare-linux-x64 -o ~/.local/bin/envshare
+            chmod +x ~/.local/bin/envshare
+            ```
+
+            Or use the self-installer (once installed):
+            ```bash
+            envshare update
             ```
           files: artifacts/*
