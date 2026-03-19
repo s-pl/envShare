@@ -39,9 +39,11 @@ export const updateCommand = new Command('update')
         ? __GITHUB_REPO__
         : 'OWNER/envShare';
 
-    const currentVersion =
-      typeof __ENVSHARE_VERSION__ !== 'undefined' && __ENVSHARE_VERSION__
-        ? __ENVSHARE_VERSION__
+    // Build date injected at compile time — used to detect re-published releases
+    // that share the same version number (e.g. hotfix pushed to the same tag).
+    const buildDate =
+      typeof __BUILD_DATE__ !== 'undefined' && __BUILD_DATE__
+        ? new Date(__BUILD_DATE__)
         : null;
 
     // ── 1. Fetch latest release from GitHub ───────────────────────────────────
@@ -55,33 +57,39 @@ export const updateCommand = new Command('update')
       process.exit(1);
     }
 
-    const latestTag = release.tag_name as string;           // e.g. "v1.2.0"
-    const latestVersion = latestTag.replace(/^v/, '');      // e.g. "1.2.0"
-    console.log(chalk.dim(`latest: ${latestTag}`));
-
-    if (currentVersion && currentVersion === latestVersion) {
-      console.log(chalk.green('  ✔ Already up to date.\n'));
-      return;
-    }
-
-    if (currentVersion) {
-      console.log(`  ${chalk.dim('v' + currentVersion)} → ${chalk.green(latestTag)}`);
-    } else {
-      console.log(`  Installing ${chalk.green(latestTag)}`);
-    }
-
-    if (opts.check) {
-      console.log(chalk.dim(`  Run ${chalk.bold('envshare update')} to install.\n`));
-      return;
-    }
-
     // ── 2. Pick the right asset for this platform ─────────────────────────────
     const assetName = getAssetName();
     const asset = (release.assets as any[])?.find((a: any) => a.name === assetName);
     if (!asset) {
+      console.log('');
       console.error(chalk.red(`  No binary found for your platform (expected: ${assetName})`));
       console.error(chalk.dim(`  Visit: https://github.com/${GITHUB_REPO}/releases`));
       process.exit(1);
+    }
+
+    // Compare by asset publication date vs binary build date.
+    // This handles the case where the release tag stays the same (v1.0.0)
+    // but the CI re-publishes a newer binary to it.
+    const assetDate = new Date(asset.updated_at as string);
+    const latestTag = release.tag_name as string;
+
+    const isOutdated = buildDate === null || assetDate > buildDate;
+
+    console.log(chalk.dim(`${latestTag}  (published ${assetDate.toLocaleDateString()})`));
+
+    if (!isOutdated) {
+      console.log(chalk.green('  ✔ Already up to date.\n'));
+      return;
+    }
+
+    if (buildDate) {
+      console.log(chalk.dim(`  Your build: ${buildDate.toLocaleDateString()}  →  Released: ${assetDate.toLocaleDateString()}`));
+    }
+
+    if (opts.check) {
+      console.log(chalk.yellow(`  Update available: ${latestTag}`));
+      console.log(chalk.dim(`  Run ${chalk.bold('envshare update')} to install.\n`));
+      return;
     }
 
     // ── 3. Download to a temp file ────────────────────────────────────────────
@@ -111,7 +119,7 @@ export const updateCommand = new Command('update')
         batchPath,
         [
           '@echo off',
-          'ping 127.0.0.1 -n 3 >nul',            // ~2 s delay
+          'ping 127.0.0.1 -n 3 >nul',
           `move /y "${tmpPath}" "${currentExe}"`,
           `del "${batchPath}"`,
         ].join('\r\n'),
@@ -120,7 +128,7 @@ export const updateCommand = new Command('update')
       console.log(chalk.green(`  ✔ Update to ${latestTag} will complete when you open a new terminal.\n`));
     } else {
       try {
-        renameSync(tmpPath, currentExe);   // atomic on same filesystem
+        renameSync(tmpPath, currentExe);
         chmodSync(currentExe, 0o755);
         console.log(chalk.green(`  ✔ Updated to ${latestTag}. Restart your terminal to use it.\n`));
       } catch (err: any) {
