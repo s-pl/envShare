@@ -1,0 +1,65 @@
+@startuml
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName Courier
+title envShare - Use Case Diagram
+
+left to right direction
+
+actor "Admin" as A
+actor "Developer" as D
+actor "Viewer" as V
+
+rectangle "envShare Platform" {
+  usecase "Configure API URL" as UC1
+  usecase "Register account" as UC2
+  usecase "Log in" as UC3
+  usecase "List organizations and projects" as UC4
+  usecase "Initialize local project link" as UC5
+  usecase "Push environment file" as UC6
+  usecase "Pull environment file" as UC7
+  usecase "Set personal secret value" as UC8
+  usecase "Run command with injected secrets" as UC9
+  usecase "Show CLI version" as UC10
+}
+
+A --> UC1
+A --> UC2
+A --> UC3
+A --> UC4
+A --> UC5
+A --> UC6
+A --> UC7
+A --> UC8
+A --> UC9
+A --> UC10
+
+D --> UC1
+D --> UC2
+D --> UC3
+D --> UC4
+D --> UC5
+D --> UC6
+D --> UC7
+D --> UC8
+D --> UC9
+D --> UC10
+
+V --> UC1
+V --> UC2
+V --> UC3
+V --> UC4
+V --> UC5
+V --> UC7
+V --> UC10
+
+note bottom of UC6
+Viewer cannot push changes
+end note
+
+note bottom of UC9
+Runtime secrets are injected in memory.
+No output file is created unless using pull.
+end note
+
+@enduml

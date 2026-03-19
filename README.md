@@ -16,22 +16,18 @@ All secrets are encrypted at rest with **AES-256-GCM**. The encryption key never
 ## Architecture
 
 ```
-┌─────────────┐   ┌──────────────────┐   ┌────────────────────┐
-│   CLI (esai) │   │  Web Dashboard   │   │  Backend (API)     │
-│  Commander   │   │  React + Zustand │   │  Express + Prisma  │
-└──────┬──────┘   └────────┬─────────┘   └────────┬───────────┘
-       │                   │                        │
-       └───────────────────┴────────────────────────┘
-                           │
-                    ┌──────▼──────┐
-                    │  PostgreSQL  │
-                    └─────────────┘
+┌─────────────┐      ┌────────────────────┐      ┌─────────────┐
+│ CLI (esai)  │ ───▶ │  Backend (API)     │ ───▶ │ PostgreSQL  │
+│ Commander   │      │  Express + Prisma  │      │    16       │
+└─────────────┘      └────────────────────┘      └─────────────┘
+
+Optional production edge:
+CLI (HTTPS) -> Caddy -> Backend API
 ```
 
 | Component  | Tech                                      | Port (dev) |
 |------------|-------------------------------------------|------------|
 | `backend/` | Node.js · Express · Prisma · PostgreSQL   | 3000       |
-| `frontend/`| React 18 · TypeScript · Tailwind · Zustand| 5173       |
 | `cli/`     | Node.js · Commander.js → `esai` command   | —          |
 
 ---
@@ -54,8 +50,8 @@ openssl rand -hex 32
 POSTGRES_PASSWORD=your_db_password
 JWT_SECRET=<64-char hex string>
 MASTER_ENCRYPTION_KEY=<64-char hex string>
-ALLOWED_ORIGINS=http://localhost:5173
-API_URL=http://localhost:3000
+ALLOWED_ORIGINS=*
+API_URL=http://localhost:3001
 ```
 
 > **Never commit this file.** The `MASTER_ENCRYPTION_KEY` is the root of all encryption — losing it means losing all secrets.
@@ -69,7 +65,6 @@ docker compose up -d
 This starts:
 - **PostgreSQL 16** on port 5432 (internal)
 - **Backend** on port 3001 → mapped from internal 3000
-- **Frontend** (Nginx) on port 5173
 
 ### 4. Run database migrations
 
@@ -77,7 +72,7 @@ This starts:
 docker compose exec backend npx prisma migrate deploy
 ```
 
-The app is now running at `http://localhost:5173`.
+The API is now running at `http://localhost:3001`.
 
 ---
 
@@ -91,7 +86,7 @@ ESAI_DOMAIN=secrets.yourdomain.com docker compose -f docker-compose.https.yml up
 
 The `Caddyfile` handles:
 - TLS termination (auto cert from Let's Encrypt)
-- Reverse proxy: `/api/*` → backend, everything else → frontend
+- Reverse proxy for API traffic to backend
 - Security headers (HSTS, X-Frame-Options, etc.)
 
 ---
@@ -106,15 +101,6 @@ npm install
 cp .env.example .env   # fill in your values
 npx prisma migrate dev
 npm run dev            # starts on :3000 with hot reload
-```
-
-### Frontend
-
-```bash
-cd frontend
-npm install
-# Set VITE_API_URL in .env or inline:
-VITE_API_URL=http://localhost:3000 npm run dev   # starts on :5173
 ```
 
 ### CLI
@@ -231,15 +217,15 @@ Add `.esai.json` to `.gitignore` if you don't want the project link committed.
 
 ---
 
-## Web Dashboard
+## CLI-only operation
 
-Open `http://localhost:5173` in your browser.
+envShare now operates entirely through the `esai` CLI.
 
-- **Dashboard** — overview of all your projects
-- **Secrets** — view, edit, and version secrets for a project
-- **Members** — add/remove team members and assign roles (Admin, Developer, Viewer)
-- **Push** — upload a `.env` from the browser
-- **Audit logs** — full history of who changed what and when
+Typical flow:
+- Configure API endpoint (`esai url`)
+- Authenticate (`esai register` or `esai login`)
+- Link local folder (`esai init`)
+- Sync secrets (`esai push`, `esai pull`, `esai set`, `esai run`)
 
 ---
 
@@ -260,10 +246,53 @@ See [`SECURITY.md`](SECURITY.md) for the full threat model and key rotation guid
 Key points:
 - Secrets encrypted with **AES-256-GCM** + per-secret random IV
 - `MASTER_ENCRYPTION_KEY` is never stored in the database
-- JWT access tokens expire in **15 minutes**, stored in memory (not localStorage)
+- JWT access tokens expire in **15 minutes** and are kept in process memory
 - Refresh tokens are **HttpOnly cookies**, single-use, rotated on every refresh
 - Passwords hashed with **bcrypt** (12 rounds)
 - Rate limiting on auth endpoints (20 req / 15 min per IP)
+
+---
+
+## PlantUML diagrams
+
+Rendered diagrams are included below. Source files are in `plantuml/`.
+
+### Architecture
+
+Source: `plantuml/architecture.puml`
+
+![System Architecture](plantuml/architecture.png)
+
+### Entity Relationship
+
+Source: `plantuml/er-diagram.puml`
+
+![Entity Relationship Diagram](plantuml/er-diagram.png)
+
+### Database Schema
+
+Source: `plantuml/database-schema.puml`
+
+![Database Schema](plantuml/database-schema.png)
+
+### Use Cases
+
+Source: `plantuml/use-cases.puml`
+
+![Use Cases](plantuml/use-cases.png)
+
+### Sync Flow
+
+Source: `plantuml/sync-flow.puml`
+
+![Sync Flow](plantuml/sync-flow.png)
+
+### Deployment Flow
+
+Source: `plantuml/deployment-flow.puml`
+
+![Deployment Flow](plantuml/deployment-flow.png)
+
 
 ---
 
@@ -276,7 +305,7 @@ Key points:
 | `JWT_SECRET` | ✓ | 64-char hex string for signing JWTs |
 | `MASTER_ENCRYPTION_KEY` | ✓ | 64-char hex string (32 bytes) — root encryption key |
 | `ALLOWED_ORIGINS` | ✓ | CORS origins (comma-separated) |
-| `API_URL` | ✓ | Backend URL used by the frontend |
+| `API_URL` | ✓ | Backend URL used by the CLI |
 | `PORT` | — | Backend port (default: `3000`) |
 | `NODE_ENV` | — | `production` or `development` |
 | `LOG_LEVEL` | — | Winston log level (default: `info`) |

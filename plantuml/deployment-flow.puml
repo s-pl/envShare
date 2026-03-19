@@ -1,0 +1,28 @@
+@startuml
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName Courier
+
+title envShare - CLI Request Routing Flow
+
+start
+:User runs an esai command;
+:CLI reads API URL from local config;
+
+if (API URL uses public HTTPS domain?) then (yes)
+  :DNS resolves ESAI_DOMAIN;
+  :Request reaches Caddy (80/443);
+  :Caddy reverse proxies to backend:3000;
+else (no)
+  :CLI calls backend directly (localhost or internal URL);
+endif
+
+:Backend validates auth and processes route;
+:Backend reads/writes PostgreSQL;
+:Backend returns JSON response;
+:CLI renders output in terminal;
+
+:Response sent back to user;
+stop
+
+@enduml

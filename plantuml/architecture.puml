@@ -1,0 +1,63 @@
+@startuml
+skinparam backgroundColor #FFFFFF
+skinparam componentStyle rectangle
+skinparam shadowing false
+skinparam defaultFontName Courier
+skinparam ArrowColor #333333
+skinparam packageStyle rectangle
+
+title envShare - System Architecture
+
+actor Developer
+actor Admin
+
+node "Developer Workstation" {
+  component "CLI (esai)\nNode.js + Commander" as CLI
+}
+
+cloud "Internet / LAN" as Net
+
+node "Edge" {
+  component "Caddy\nTLS Termination\nReverse Proxy" as Caddy
+}
+
+node "Application Network" {
+  component "Backend API\nExpress + Prisma" as API
+}
+
+database "PostgreSQL 16\nEncrypted secrets at rest" as DB
+
+Developer --> CLI : push/pull/run/set
+Admin --> CLI : project and member administration
+
+CLI --> Net
+Net --> Caddy : HTTPS requests
+Caddy --> API : /api/*
+API --> DB : SQL queries
+
+note left of CLI
+CLI-only operation
+No web dashboard
+end note
+
+note right of API
+Security controls:
+- Helmet headers
+- CORS allowlist
+- Rate limiting
+- JWT + refresh tokens
+- Audit logging
+end note
+
+note right of DB
+Core entities:
+- users
+- projects
+- environments
+- secrets
+- user_secret_values
+- secret_versions
+- audit_logs
+end note
+
+@enduml
