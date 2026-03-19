@@ -41,6 +41,7 @@ const result = await esbuild.build({
   },
   define: {
     '__ENVSHARE_VERSION__': JSON.stringify(version),
+    '__GITHUB_REPO__': JSON.stringify(process.env.GITHUB_REPO || ''),
     'process.env.DEV': JSON.stringify('false'),
   },
   logLevel: 'info',

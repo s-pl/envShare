@@ -13,12 +13,14 @@ import { runCommand }      from './commands/run.js';
 import { uiCommand }       from './commands/ui.js';
 import { versionCommand }  from './commands/version.js';
 import { installCommand }  from './commands/install.js';
+import { updateCommand }   from './commands/update.js';
 
 const program = new Command();
 program.name('envshare').description('envShare - Secrets management CLI').version('1.0.0');
 
 program.addCommand(versionCommand);
 program.addCommand(installCommand);
+program.addCommand(updateCommand);
 program.addCommand(urlCommand);
 program.addCommand(registerCommand);
 program.addCommand(loginCommand);
