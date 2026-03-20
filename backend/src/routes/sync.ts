@@ -40,7 +40,7 @@ syncRouter.post('/:projectId/push', async (req: AuthRequest, res, next) => {
   } catch (err) { next(err); }
 });
 
-// GET /api/v1/sync/:projectId/pull
+// GET /api/v1/sync/:projectId/pull[?env=environmentName]
 syncRouter.get('/:projectId/pull', async (req: AuthRequest, res, next) => {
   try {
     const member = await prisma.projectMember.findUnique({
@@ -48,7 +48,8 @@ syncRouter.get('/:projectId/pull', async (req: AuthRequest, res, next) => {
     });
     if (!member) throw new AppError(403, 'Access denied', 'FORBIDDEN');
 
-    const secrets = await syncService.pull(req.params.projectId, req.user!.id);
+    const envFilter = typeof req.query.env === 'string' ? req.query.env : undefined;
+    const secrets = await syncService.pull(req.params.projectId, req.user!.id, envFilter);
     res.json({ secrets });
   } catch (err) { next(err); }
 });

@@ -10,11 +10,14 @@ import { initCommand }     from './commands/init.js';
 import { pushCommand }     from './commands/push.js';
 import { pullCommand }     from './commands/pull.js';
 import { setCommand }      from './commands/set.js';
-import { runCommand }      from './commands/run.js';
 import { uiCommand }       from './commands/ui.js';
 import { versionCommand }  from './commands/version.js';
 import { installCommand }  from './commands/install.js';
 import { updateCommand }   from './commands/update.js';
+import { listCommand }     from './commands/list.js';
+import { deleteCommand }   from './commands/delete.js';
+import { historyCommand }  from './commands/history.js';
+import { auditCommand }    from './commands/audit.js';
 import { ApiError }        from './api.js';
 
 const program = new Command();
@@ -32,7 +35,10 @@ program.addCommand(initCommand);
 program.addCommand(pushCommand);
 program.addCommand(pullCommand);
 program.addCommand(setCommand);
-program.addCommand(runCommand);
+program.addCommand(listCommand);
+program.addCommand(deleteCommand);
+program.addCommand(historyCommand);
+program.addCommand(auditCommand);
 program.addCommand(uiCommand);
 
 void program.parseAsync(process.argv).catch((err: unknown) => {

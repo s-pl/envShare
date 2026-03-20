@@ -268,21 +268,32 @@ graph TD
 
 ```bash
 # Daily workflow
-envshare push                     # upload .env (interactive)
-envshare push --dry-run           # preview without uploading
-envshare pull                     # download secrets -> .env files
-envshare set KEY "value"          # set your personal value for a key
-envshare run -- npm start         # inject secrets into a subprocess (no disk write)
+envshare push                              # upload .env (interactive)
+envshare push --yes                        # push all without prompts (CI-friendly)
+envshare push --env staging                # tag secrets with environment name
+envshare push --dry-run                    # preview without uploading
+envshare pull                              # download secrets -> .env files
+envshare pull --env staging                # pull only staging environment
+envshare set KEY "value"                   # set your personal value for a key
+
+# Inspect
+envshare list                              # list all secret keys (no values)
+envshare list --json                       # machine-readable output
+envshare history KEY                       # show version history for a key
+envshare delete KEY                        # delete a secret (all members)
+envshare audit                             # project audit log (ADMIN only)
+envshare audit --limit 100 --action SECRETS_PUSHED
 
 # Team
 envshare project invite user@example.com --role DEVELOPER
 envshare project members
+envshare project set-role user@example.com ADMIN
 envshare project remove user@example.com
 
 # Maintenance
-envshare update --check           # check for a newer release
-envshare update                   # download and replace the binary
-envshare version                  # show version and connection info
+envshare update --check                    # check for a newer release
+envshare update                            # download and replace the binary
+envshare version                           # show version and connection info
 ```
 
 ### Marking secrets as shared

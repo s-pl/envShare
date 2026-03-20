@@ -106,10 +106,11 @@ async function pushEntries(
   filePath: string,
   projectId: string,
   entries: { key: string; value: string; isShared: boolean }[],
+  environmentName?: string,
 ): Promise<void> {
   const { result } = await api.post<{ result: { created: string[]; updated: string[]; sharedUpdated: string[] } }>(
     `/sync/${projectId}/push`,
-    { secrets: entries, filePath },
+    { secrets: entries, filePath, environmentName },
   );
 
   const personal = entries.filter(e => !e.isShared);
@@ -128,8 +129,12 @@ export const pushCommand = new Command('push')
   .description('Upload .env variables to the project (interactive selection)')
   .argument('[file]', '.env file to push')
   .option('--all', 'Push all variables without interactive selection')
+  .option('--yes', 'Non-interactive: push all variables without prompts (alias for --all, useful in CI)')
+  .option('--env <name>', 'Tag secrets with this environment name (e.g. staging, production)')
   .option('--dry-run', 'Preview what would be pushed without sending')
   .action(async (file: string | undefined, opts) => {
+    // --yes is an alias for --all (CI-friendly flag name)
+    if (opts.yes) opts.all = true;
     const link = readProjectLink();
     if (!link) {
       console.error(chalk.red('  No project linked. Run `envshare init` first.'));
@@ -179,7 +184,7 @@ export const pushCommand = new Command('push')
         if (!entries.length) { console.log(chalk.dim(`  ${fp}: no variables to push`)); continue; }
         const spinner = ora({ text: `Pushing ${fp}…` }).start();
         try {
-          await pushEntries(fp, link.projectId, entries);
+          await pushEntries(fp, link.projectId, entries, opts.env);
           spinner.stop();
           pushed++;
         } catch (err) {
@@ -225,7 +230,7 @@ export const pushCommand = new Command('push')
     console.log();
     const spinner = ora({ text: `Pushing ${selected.length} variable${selected.length !== 1 ? 's' : ''}…` }).start();
     try {
-      await pushEntries(chosenFile, link.projectId, selected);
+      await pushEntries(chosenFile, link.projectId, selected, opts.env);
       spinner.stop();
     } catch (err) {
       spinner.stop();
