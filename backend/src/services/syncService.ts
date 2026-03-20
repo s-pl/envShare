@@ -115,7 +115,7 @@ export const syncService = {
     return result;
   },
 
-  async pull(projectId: string, userId: string) {
+  async pull(projectId: string, userId: string, envFilter?: string) {
     const secrets = await secretsService.listForUser(projectId, userId);
 
     // Fetch environment filePaths for each secret
@@ -131,7 +131,7 @@ export const syncService = {
     });
     const envById = new Map(environments.map(e => [e.id, e]));
 
-    return secrets.map(s => {
+    const result = secrets.map(s => {
       const envId = envIdBySecretId.get(s.id);
       const env = envId ? envById.get(envId) : null;
       return {
@@ -140,5 +140,10 @@ export const syncService = {
         environmentName: env?.name ?? 'production',
       };
     });
+
+    if (envFilter) {
+      return result.filter(s => s.environmentName === envFilter);
+    }
+    return result;
   },
 };

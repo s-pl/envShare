@@ -45,6 +45,7 @@ export const pullCommand = new Command('pull')
   .description('Download secrets and write .env files to their correct paths')
   .option('-o, --output <file>', 'Write all secrets to a single file (ignores environment paths)')
   .option('--all', 'Write each environment to its own file path (default when no --output)')
+  .option('--env <name>', 'Only pull secrets for this environment (e.g. staging)')
   .action(async (opts) => {
     const link = readProjectLink();
     if (!link) {
@@ -55,7 +56,15 @@ export const pullCommand = new Command('pull')
     const spinner = ora(`Pulling secrets for ${link.projectName}...`).start();
 
     try {
-      const { secrets } = await api.get<{ secrets: PulledSecret[] }>(`/sync/${link.projectId}/pull`);
+      const pullUrl = opts.env
+        ? `/sync/${link.projectId}/pull?env=${encodeURIComponent(opts.env)}`
+        : `/sync/${link.projectId}/pull`;
+      let { secrets } = await api.get<{ secrets: PulledSecret[] }>(pullUrl);
+
+      // Client-side filter if backend doesn't support ?env yet
+      if (opts.env) {
+        secrets = secrets.filter(s => s.environmentName === opts.env);
+      }
       spinner.stop();
 
       if (opts.output) {

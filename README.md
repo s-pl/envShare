@@ -1,311 +1,387 @@
 # envShare
 
-A self-hosted secrets management platform for teams. Share environment variables securely — no more `.env` files committed to Git or sent over Slack.
+A self-hosted secrets management platform for teams. Share `.env` variables securely — no more secrets committed to Git or sent over Slack.
 
-## How it works
+Secrets are split into two types:
+- **Shared** — one value for the whole team (`DATABASE_URL`, `REDIS_URL`)
+- **Personal** — each developer has their own (`AWS_ACCESS_KEY_ID`, `STRIPE_SECRET_KEY`)
 
-envShare separates secrets into two types:
-
-- **Shared** — same value for all team members (e.g. `DATABASE_URL`, `REDIS_URL`)
-- **Personal** — each developer has their own value (e.g. `AWS_ACCESS_KEY_ID`, `STRIPE_SECRET_KEY`)
-
-All secrets are encrypted at rest with **AES-256-GCM**. The encryption key never touches the database.
+Everything is encrypted at rest with **AES-256-GCM**. The encryption key never touches the database.
 
 ---
 
-## Architecture
+## Getting started
 
-```
-┌─────────────┐      ┌────────────────────┐      ┌─────────────┐
-│ CLI (esai)  │ ───▶ │  Backend (API)     │ ───▶ │ PostgreSQL  │
-│ Commander   │      │  Express + Prisma  │      │    16       │
-└─────────────┘      └────────────────────┘      └─────────────┘
-
-Optional production edge:
-CLI (HTTPS) -> Caddy -> Backend API
-```
-
-| Component  | Tech                                      | Port (dev) |
-|------------|-------------------------------------------|------------|
-| `backend/` | Node.js · Express · Prisma · PostgreSQL   | 3000       |
-| `cli/`     | Node.js · Commander.js → `esai` command   | —          |
-
----
-
-## Quick Start (Docker)
-
-### 1. Generate secrets
+### Option A — Start your own project (you become Admin)
 
 ```bash
-# JWT secret (64 hex chars)
-openssl rand -hex 32
+# 1. Install and point at your server
+envshare install
+envshare url http://your-server:3001
 
-# Master encryption key (exactly 64 hex chars = 32 bytes)
-openssl rand -hex 32
+# 2. Create account
+envshare register
+envshare login
+
+# 3. Create a project and link your folder
+envshare project create
+cd my-app
+envshare init
+
+# 4. Push your .env
+envshare push
+
+# 5. Invite teammates
+envshare project invite colleague@example.com --role DEVELOPER
 ```
 
-### 2. Create `.env` file in the project root
-
-```env
-POSTGRES_PASSWORD=your_db_password
-JWT_SECRET=<64-char hex string>
-MASTER_ENCRYPTION_KEY=<64-char hex string>
-ALLOWED_ORIGINS=*
-API_URL=http://localhost:3001
-```
-
-> **Never commit this file.** The `MASTER_ENCRYPTION_KEY` is the root of all encryption — losing it means losing all secrets.
-
-### 3. Start the stack
+### Option B — Join an existing project (invited by an Admin)
 
 ```bash
-docker compose up -d
+# 1. Install and point at the same server
+envshare install
+envshare url http://your-server:3001
+
+# 2. Create account
+envshare register
+envshare login
+
+# 3. Ask your Admin to run:
+#    envshare project invite you@example.com --role DEVELOPER
+
+# 4. Once invited, link your folder and pull secrets
+cd my-app
+envshare init
+envshare pull
 ```
 
-This starts:
-- **PostgreSQL 16** on port 5432 (internal)
-- **Backend** on port 3001 → mapped from internal 3000
-
-### 4. Run database migrations
+Personal secrets not yet set show a warning in the `.env` file. Set your value with:
 
 ```bash
-docker compose exec backend npx prisma migrate deploy
+envshare set DATABASE_PASSWORD "my-local-value"
 ```
-
-The API is now running at `http://localhost:3001`.
-
----
-
-## HTTPS / Production (Caddy)
-
-Use the included Caddy setup for automatic TLS via Let's Encrypt:
-
-```bash
-ESAI_DOMAIN=secrets.yourdomain.com docker compose -f docker-compose.https.yml up -d
-```
-
-The `Caddyfile` handles:
-- TLS termination (auto cert from Let's Encrypt)
-- Reverse proxy for API traffic to backend
-- Security headers (HSTS, X-Frame-Options, etc.)
-
----
-
-## Development (without Docker)
-
-### Backend
-
-```bash
-cd backend
-npm install
-cp .env.example .env   # fill in your values
-npx prisma migrate dev
-npm run dev            # starts on :3000 with hot reload
-```
-
-### CLI
-
-```bash
-cd cli
-npm install
-npm run build          # compiles TypeScript → dist/
-npm link               # installs `esai` globally from local build
-
-# Or run without installing:
-npm run dev -- <command>
-```
-
----
-
-## CLI Reference (`esai`)
-
-### Setup — first time
-
-```bash
-# 1. Point the CLI at your server (default: http://localhost:3000)
-esai url http://localhost:3000
-
-# 2. Create an account
-esai register
-
-# 3. Or log in to an existing account
-esai login
-```
-
-### Project setup
-
-```bash
-# List all projects you belong to
-esai projects
-
-# Link your current directory to a project
-# (creates .esai.json in the current folder)
-esai init
-```
-
-### Daily workflow
-
-```bash
-# Upload your .env to the server
-esai push
-
-# Upload a specific file
-esai push .env.local
-
-# Preview what would be pushed (no changes made)
-esai push --dry-run
-
-# Download all secrets → writes .env
-esai pull
-
-# Write to a custom file
-esai pull --output .env.production
-
-# Set your personal value for a secret
-esai set DATABASE_PASSWORD "my-local-password"
-
-# Run a command with secrets injected (nothing written to disk)
-esai run -- npm start
-esai run -- docker compose up
-```
-
-### Utility
-
-```bash
-# View or change the API server URL
-esai url
-esai url https://secrets.yourdomain.com
-```
-
----
-
-## Marking secrets as shared
-
-Two ways to tell envShare that a variable should be shared across the whole team:
-
-**Option 1 — inline comment in your `.env`:**
-
-```env
-DATABASE_URL=postgres://user:pass@host/db  # @shared
-REDIS_URL=redis://localhost:6379           # @shared
-API_SECRET=my-personal-key                 # (personal, no tag needed)
-```
-
-**Option 2 — `.esai.config.json` in the project root:**
-
-```json
-{
-  "defaultFile": ".env",
-  "sharedPatterns": ["*_URL", "*_HOST", "DB_*"],
-  "ignoredKeys": ["NODE_ENV", "PORT"]
-}
-```
-
-Any key matching `sharedPatterns` is automatically marked as shared on push. Keys in `ignoredKeys` are skipped entirely.
-
----
-
-## Local config files
-
-| File | Location | Purpose |
-|------|----------|---------|
-| `~/.config/envsharesai/config.json` | Home dir | Stores API URL, auth tokens, user info |
-| `.esai.json` | Project root | Links this directory to a project ID |
-| `.esai.config.json` | Project root | Push configuration (shared patterns, ignored keys) |
-
-Add `.esai.json` to `.gitignore` if you don't want the project link committed.
-
----
-
-## CLI-only operation
-
-envShare now operates entirely through the `esai` CLI.
-
-Typical flow:
-- Configure API endpoint (`esai url`)
-- Authenticate (`esai register` or `esai login`)
-- Link local folder (`esai init`)
-- Sync secrets (`esai push`, `esai pull`, `esai set`, `esai run`)
 
 ---
 
 ## Roles
 
-| Role        | View secrets | Push/pull | Manage members | Delete project |
+| Role        | View secrets | Push / pull | Invite members | Delete project |
 |-------------|:---:|:---:|:---:|:---:|
-| **Admin**     | ✓ | ✓ | ✓ | ✓ |
-| **Developer** | ✓ | ✓ | ✗ | ✗ |
-| **Viewer**    | ✓ | ✗ | ✗ | ✗ |
+| **Admin**     | yes | yes | yes | yes |
+| **Developer** | yes | yes | no  | no  |
+| **Viewer**    | yes | no  | no  | no  |
+
+---
+
+## Architecture
+
+```mermaid
+flowchart LR
+    subgraph workstation["Developer workstation"]
+        CLI["envshare CLI\n(standalone binary)"]
+    end
+
+    subgraph server["Server · Docker Compose"]
+        Caddy["Caddy\nTLS + reverse proxy\n(optional)"]
+        API["Backend API\nExpress · Prisma\n:3000"]
+        DB[("PostgreSQL 16\n:5432")]
+    end
+
+    GH["GitHub Releases\n(self-update)"]
+
+    CLI -->|"HTTPS /api/v1/*"| Caddy
+    Caddy -->|"/api/*"| API
+    API --> DB
+    CLI -.->|"envshare update"| GH
+```
+
+---
+
+## Database schema
+
+```mermaid
+erDiagram
+    User {
+        string id PK
+        string email
+        string passwordHash
+        string name
+        datetime consentedAt
+        int failedLoginAttempts
+        datetime lockedUntil
+    }
+    Project {
+        string id PK
+        string name
+        string slug
+        string encryptedKey
+    }
+    ProjectMember {
+        string id PK
+        string projectId FK
+        string userId FK
+        enum role
+    }
+    Environment {
+        string id PK
+        string projectId FK
+        string name
+        string filePath
+    }
+    Secret {
+        string id PK
+        string projectId FK
+        string environmentId FK
+        string keyHash
+        string encryptedKey
+        boolean isShared
+        string sharedEncryptedValue
+        int version
+    }
+    UserSecretValue {
+        string id PK
+        string secretId FK
+        string userId FK
+        string encryptedValue
+    }
+    SecretVersion {
+        string id PK
+        string secretId FK
+        string userId FK
+        string action
+        int version
+    }
+    RefreshToken {
+        string id PK
+        string userId FK
+        string token
+        datetime expiresAt
+    }
+    AuditLog {
+        string id PK
+        string actor
+        string action
+        string resourceType
+        string resourceId
+        datetime createdAt
+    }
+
+    User ||--o{ ProjectMember : "belongs to"
+    Project ||--o{ ProjectMember : "has"
+    Project ||--o{ Environment : "contains"
+    Project ||--o{ Secret : "has"
+    Environment |o--o{ Secret : "scopes"
+    Secret ||--o{ UserSecretValue : "personal values"
+    User ||--o{ UserSecretValue : "owns"
+    Secret ||--o{ SecretVersion : "history"
+    User ||--o{ RefreshToken : "sessions"
+```
+
+---
+
+## Authentication flow
+
+```mermaid
+sequenceDiagram
+    actor Dev as Developer
+    participant CLI
+    participant API
+    participant DB
+
+    Dev->>CLI: envshare login
+    CLI->>API: POST /auth/login {email, password}
+    API->>DB: SELECT user WHERE email = ?
+    DB-->>API: user record
+    API->>API: bcrypt.compare(password, hash)
+    API->>DB: INSERT refresh_token
+    API-->>CLI: {accessToken, refreshToken}
+    CLI->>CLI: store tokens
+
+    Note over CLI,API: Access token expires after 15 min
+
+    CLI->>API: any request (expired token)
+    API-->>CLI: 401 Unauthorized
+    CLI->>API: POST /auth/refresh {refreshToken}
+    API->>DB: DELETE old token (single-use)
+    API->>DB: INSERT new refresh_token
+    API-->>CLI: new {accessToken, refreshToken}
+    CLI->>API: retry original request
+```
+
+---
+
+## Push / pull flow
+
+```mermaid
+sequenceDiagram
+    actor Dev as Developer
+    participant CLI
+    participant API
+    participant DB
+
+    Note over Dev,DB: Push
+    Dev->>CLI: envshare push
+    CLI->>CLI: parse .env, classify keys
+    CLI->>API: POST /sync/:projectId/push
+    API->>API: unwrapKey → projectKey
+    loop each secret
+        API->>API: encrypt(key, value)
+        API->>DB: upsert secret + version
+    end
+    API-->>CLI: {created, updated}
+    CLI-->>Dev: summary
+
+    Note over Dev,DB: Pull
+    Dev->>CLI: envshare pull
+    CLI->>API: GET /sync/:projectId/pull
+    API->>DB: SELECT secrets + personal values
+    DB-->>API: encrypted records
+    API->>API: decrypt all → plain key/value
+    API-->>CLI: [{key, value, filePath}]
+    CLI->>CLI: write .env files (mode 0600)
+    CLI-->>Dev: files written
+```
+
+---
+
+## Encryption key hierarchy
+
+```mermaid
+graph TD
+    M["MASTER_ENCRYPTION_KEY\nenv var — never stored in DB"]
+    P["Project Key\nrandom 32 bytes per project\nstored encrypted in DB"]
+    SK["Secret key name\nAES-256-GCM(keyName, projectKey)\n+ random IV + GCM tag"]
+    SV["Shared value\nAES-256-GCM(value, projectKey)\n+ random IV + GCM tag"]
+    PV["Personal value\nAES-256-GCM(value, projectKey)\n+ random IV + GCM tag"]
+    KH["Key hash\nHMAC-SHA256(keyName, projectKey)\nfor deduplication only"]
+
+    M -->|wrapKey / unwrapKey| P
+    P --> SK
+    P --> SV
+    P --> PV
+    P --> KH
+```
+
+---
+
+## CLI reference
+
+```bash
+# Daily workflow
+envshare push                              # upload .env (interactive)
+envshare push --yes                        # push all without prompts (CI-friendly)
+envshare push --env staging                # tag secrets with environment name
+envshare push --dry-run                    # preview without uploading
+envshare pull                              # download secrets -> .env files
+envshare pull --env staging                # pull only staging environment
+envshare set KEY "value"                   # set your personal value for a key
+
+# Inspect
+envshare list                              # list all secret keys (no values)
+envshare list --json                       # machine-readable output
+envshare history KEY                       # show version history for a key
+envshare delete KEY                        # delete a secret (all members)
+envshare audit                             # project audit log (ADMIN only)
+envshare audit --limit 100 --action SECRETS_PUSHED
+
+# Team
+envshare project invite user@example.com --role DEVELOPER
+envshare project members
+envshare project set-role user@example.com ADMIN
+envshare project remove user@example.com
+
+# Maintenance
+envshare update --check                    # check for a newer release
+envshare update                            # download and replace the binary
+envshare version                           # show version and connection info
+```
+
+### Marking secrets as shared
+
+```env
+DATABASE_URL=postgres://user:pass@host/db  # @shared
+API_SECRET=my-personal-key
+```
+
+Or via `.envshare.config.json`:
+
+```json
+{
+  "sharedPatterns": ["*_URL", "*_HOST", "DB_*"],
+  "ignoredKeys": ["NODE_ENV", "PORT"]
+}
+```
+
+---
+
+## Server setup (Docker)
+
+```bash
+# Generate keys
+openssl rand -hex 32   # -> JWT_SECRET
+openssl rand -hex 32   # -> MASTER_ENCRYPTION_KEY
+```
+
+Create `.env` in the project root:
+
+```env
+POSTGRES_PASSWORD=your_db_password
+JWT_SECRET=<64-char hex>
+MASTER_ENCRYPTION_KEY=<64-char hex>
+ALLOWED_ORIGINS=*
+API_URL=http://localhost:3001
+```
+
+> Never commit this file. Losing `MASTER_ENCRYPTION_KEY` means losing all secrets permanently.
+
+```bash
+docker compose up -d
+docker compose exec backend npx prisma migrate deploy
+```
+
+### HTTPS (Caddy)
+
+```bash
+ENVSHARE_DOMAIN=secrets.yourdomain.com docker compose -f docker-compose.https.yml up -d
+```
+
+---
+
+## Local files
+
+| File | Purpose |
+|------|---------|
+| `~/.config/envshare/config.json` | API URL, auth tokens |
+| `.envshare.json` | Links this folder to a project (add to `.gitignore`) |
+| `.envshare.config.json` | Push config (shared patterns, ignored keys) |
 
 ---
 
 ## Security
 
-See [`SECURITY.md`](SECURITY.md) for the full threat model and key rotation guide.
+Secrets encrypted with **AES-256-GCM** + random IV per secret. Master key never stored in the database. See [`SECURITY.md`](SECURITY.md) for the full threat model.
 
-Key points:
-- Secrets encrypted with **AES-256-GCM** + per-secret random IV
-- `MASTER_ENCRYPTION_KEY` is never stored in the database
-- JWT access tokens expire in **15 minutes** and are kept in process memory
-- Refresh tokens are **HttpOnly cookies**, single-use, rotated on every refresh
-- Passwords hashed with **bcrypt** (12 rounds)
-- Rate limiting on auth endpoints (20 req / 15 min per IP)
-
----
-
-## PlantUML diagrams
-
-Rendered diagrams are included below. Source files are in `plantuml/`.
-
-### Architecture
-
-Source: `plantuml/architecture.puml`
-
-![System Architecture](plantuml/architecture.png)
-
-### Entity Relationship
-
-Source: `plantuml/er-diagram.puml`
-
-![Entity Relationship Diagram](plantuml/er-diagram.png)
-
-### Database Schema
-
-Source: `plantuml/database-schema.puml`
-
-![Database Schema](plantuml/database-schema.png)
-
-### Use Cases
-
-Source: `plantuml/use-cases.puml`
-
-![Use Cases](plantuml/use-cases.png)
-
-### Sync Flow
-
-Source: `plantuml/sync-flow.puml`
-
-![Sync Flow](plantuml/sync-flow.png)
-
-### Deployment Flow
-
-Source: `plantuml/deployment-flow.puml`
-
-![Deployment Flow](plantuml/deployment-flow.png)
-
+- JWT access tokens: **15 min**, memory only
+- Refresh tokens: **single-use**, rotated on every refresh
+- Passwords: **bcrypt** (12 rounds)
+- Auth rate limit: **20 req / 15 min per IP**
+- Account lockout after **10 failed attempts**
+- Full **audit log** for every change (ISO 27001 A.12.4.1)
 
 ---
 
-## Environment variables reference
+## Environment variables
 
 | Variable | Required | Description |
-|----------|----------|-------------|
-| `DATABASE_URL` | ✓ | PostgreSQL connection string |
-| `POSTGRES_PASSWORD` | ✓ | DB password (used by Docker) |
-| `JWT_SECRET` | ✓ | 64-char hex string for signing JWTs |
-| `MASTER_ENCRYPTION_KEY` | ✓ | 64-char hex string (32 bytes) — root encryption key |
-| `ALLOWED_ORIGINS` | ✓ | CORS origins (comma-separated) |
-| `API_URL` | ✓ | Backend URL used by the CLI |
-| `PORT` | — | Backend port (default: `3000`) |
-| `NODE_ENV` | — | `production` or `development` |
-| `LOG_LEVEL` | — | Winston log level (default: `info`) |
+|----------|:--------:|-------------|
+| `DATABASE_URL` | yes | PostgreSQL connection string |
+| `POSTGRES_PASSWORD` | yes | DB password (Docker) |
+| `JWT_SECRET` | yes | 64-char hex — signs JWTs |
+| `MASTER_ENCRYPTION_KEY` | yes | 64-char hex — root encryption key |
+| `ALLOWED_ORIGINS` | yes | CORS origins (comma-separated) |
+| `API_URL` | yes | Backend URL |
+| `PORT` | no | Backend port (default: `3000`) |
+| `NODE_ENV` | no | `production` or `development` |
+| `LOG_LEVEL` | no | Winston log level (default: `info`) |
+| `AUDIT_LOG_RETENTION_DAYS` | no | Days to keep audit logs (default: `365`) |
+| `TRUST_PROXY` | no | Set to `1` only behind a trusted reverse proxy |

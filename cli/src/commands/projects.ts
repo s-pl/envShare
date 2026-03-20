@@ -72,10 +72,43 @@ projectsCommand
     try {
       const { members } = await api.get<{ members: any[] }>(`/projects/${link.projectId}/members`);
       console.log(chalk.bold(`\n  Members of ${link.projectName}\n`));
-      members.forEach((m) =>
-        console.log(`  ${chalk.cyan(m.user.email.padEnd(35))} ${chalk.dim(m.role)}`)
-      );
+      members.forEach((m) => {
+        const roleColor = m.role === 'ADMIN' ? chalk.yellow : m.role === 'DEVELOPER' ? chalk.cyan : chalk.dim;
+        console.log(`  ${m.user.email.padEnd(35)} ${m.user.name.padEnd(20)} ${roleColor(m.role)}`);
+      });
       console.log();
+    } catch (err) {
+      if (err instanceof ApiError) { console.error(chalk.red(`  Error: ${err.message}`)); process.exit(1); }
+      throw err;
+    }
+  });
+
+projectsCommand
+  .command('set-role <email> <role>')
+  .description('Change a member\'s role (ADMIN, DEVELOPER, VIEWER)')
+  .action(async (email: string, role: string) => {
+    const link = readProjectLink();
+    if (!link) {
+      console.error(chalk.red('  No project linked. Run `envshare init` first.'));
+      process.exit(1);
+    }
+
+    const normalized = role.toUpperCase();
+    if (!['ADMIN', 'DEVELOPER', 'VIEWER'].includes(normalized)) {
+      console.error(chalk.red('  Invalid role. Use: ADMIN, DEVELOPER, VIEWER'));
+      process.exit(1);
+    }
+
+    try {
+      const { members } = await api.get<{ members: any[] }>(`/projects/${link.projectId}/members`);
+      const target = members.find((m: any) => m.user.email === email);
+      if (!target) {
+        console.error(chalk.red(`  No member with email: ${email}`));
+        process.exit(1);
+      }
+
+      await api.patch(`/projects/${link.projectId}/members/${target.user.id}`, { role: normalized });
+      console.log(chalk.green(`  ${email} is now ${normalized} in ${link.projectName}`));
     } catch (err) {
       if (err instanceof ApiError) { console.error(chalk.red(`  Error: ${err.message}`)); process.exit(1); }
       throw err;

@@ -7,6 +7,8 @@ interface CliConfig {
   refreshToken: string;
   userId: string;
   email: string;
+  /** ISO timestamp of the GitHub asset.updated_at from the last install/update */
+  installedAssetDate: string;
 }
 
 export interface ProjectLink {
@@ -16,7 +18,7 @@ export interface ProjectLink {
 
 export const config = new Conf<CliConfig>({
   projectName: 'envshare',
-  defaults: { apiUrl: 'http://localhost:3000', refreshToken: '', userId: '', email: '' },
+  defaults: { apiUrl: 'http://localhost:3000', refreshToken: '', userId: '', email: '', installedAssetDate: '' },
 });
 
 let _accessToken: string | null = null;

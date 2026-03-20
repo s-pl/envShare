@@ -222,3 +222,4 @@ model AuditLog {
   @@index([resourceId])
   @@index([createdAt])
 }
+
