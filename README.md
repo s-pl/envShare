@@ -267,32 +267,44 @@ graph TD
 ## CLI reference
 
 ```bash
+# Setup
+envshare install                           # interactive first-time setup (URL + login)
+envshare url http://your-server:3001       # set the backend URL
+envshare register                          # create an account
+envshare login                             # log in and store tokens
+envshare init                              # link current directory to a project
+
 # Daily workflow
-envshare push                              # upload .env (interactive)
-envshare push --yes                        # push all without prompts (CI-friendly)
-envshare push --env staging                # tag secrets with environment name
-envshare push --dry-run                    # preview without uploading
-envshare pull                              # download secrets -> .env files
-envshare pull --env staging                # pull only staging environment
+envshare push                              # upload .env (interactive variable selection)
+envshare push --yes                        # push all variables without prompts (CI-friendly)
+envshare push --env staging                # tag secrets with environment name (e.g. staging)
+envshare push --dry-run                    # preview what would be pushed without uploading
+envshare pull                              # download secrets → write .env files
+envshare pull --env staging                # pull only staging environment secrets
 envshare set KEY "value"                   # set your personal value for a key
 
 # Inspect
-envshare list                              # list all secret keys (no values)
-envshare list --json                       # machine-readable output
+envshare list                              # list all secret keys in the linked project
+envshare list --json                       # machine-readable JSON output
 envshare history KEY                       # show version history for a key
-envshare delete KEY                        # delete a secret (all members)
+envshare delete KEY                        # delete a secret (affects all members)
 envshare audit                             # project audit log (ADMIN only)
 envshare audit --limit 100 --action SECRETS_PUSHED
 
 # Team
+envshare project create                    # create a new project
+envshare project list                      # list all projects you belong to
 envshare project invite user@example.com --role DEVELOPER
-envshare project members
+envshare project members                   # list project members
 envshare project set-role user@example.com ADMIN
 envshare project remove user@example.com
 
+# Terminal UI
+envshare ui                                # open interactive TUI (browse secrets, push, config)
+
 # Maintenance
-envshare update --check                    # check for a newer release
-envshare update                            # download and replace the binary
+envshare update --check                    # check for a newer release on GitHub
+envshare update                            # download and replace the binary in-place
 envshare version                           # show version and connection info
 ```
 

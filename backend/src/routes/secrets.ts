@@ -8,6 +8,22 @@ import { AppError } from '../middleware/errorHandler';
 export const secretsRouter = Router();
 secretsRouter.use(authenticate);
 
+/** Look up a secret and verify the caller is a project member. */
+async function requireSecretAccess(secretId: string, userId: string) {
+  const secret = await prisma.secret.findUnique({
+    where: { id: secretId },
+    select: { projectId: true },
+  });
+  if (!secret) throw new AppError(404, 'Secret not found', 'NOT_FOUND');
+
+  const member = await prisma.projectMember.findUnique({
+    where: { projectId_userId: { projectId: secret.projectId, userId } },
+  });
+  if (!member) throw new AppError(403, 'Access denied', 'FORBIDDEN');
+
+  return secret;
+}
+
 // GET /api/v1/secrets/:projectId
 secretsRouter.get('/:projectId', async (req: AuthRequest, res, next) => {
   try {
@@ -24,17 +40,7 @@ secretsRouter.get('/:projectId', async (req: AuthRequest, res, next) => {
 // GET /api/v1/secrets/:secretId/history
 secretsRouter.get('/:secretId/history', async (req: AuthRequest, res, next) => {
   try {
-    const secret = await prisma.secret.findUnique({
-      where: { id: req.params.secretId },
-      select: { projectId: true },
-    });
-    if (!secret) throw new AppError(404, 'Secret not found', 'NOT_FOUND');
-
-    const member = await prisma.projectMember.findUnique({
-      where: { projectId_userId: { projectId: secret.projectId, userId: req.user!.id } },
-    });
-    if (!member) throw new AppError(403, 'Access denied', 'FORBIDDEN');
-
+    const secret = await requireSecretAccess(req.params.secretId, req.user!.id);
     const history = await secretsService.getHistory(req.params.secretId, secret.projectId);
     res.json({ history });
   } catch (err) { next(err); }
@@ -43,6 +49,7 @@ secretsRouter.get('/:secretId/history', async (req: AuthRequest, res, next) => {
 // PATCH /api/v1/secrets/:secretId/value
 secretsRouter.patch('/:secretId/value', async (req: AuthRequest, res, next) => {
   try {
+    await requireSecretAccess(req.params.secretId, req.user!.id);
     const { value } = z.object({ value: z.string() }).parse(req.body);
     await secretsService.setPersonalValue(req.params.secretId, value, req.user!.id);
     res.json({ ok: true });
@@ -52,6 +59,7 @@ secretsRouter.patch('/:secretId/value', async (req: AuthRequest, res, next) => {
 // PATCH /api/v1/secrets/:secretId/shared
 secretsRouter.patch('/:secretId/shared', async (req: AuthRequest, res, next) => {
   try {
+    await requireSecretAccess(req.params.secretId, req.user!.id);
     const { value } = z.object({ value: z.string() }).parse(req.body);
     await secretsService.setSharedValue(req.params.secretId, value, req.user!.id);
     res.json({ ok: true });
@@ -61,6 +69,7 @@ secretsRouter.patch('/:secretId/shared', async (req: AuthRequest, res, next) => 
 // DELETE /api/v1/secrets/:secretId
 secretsRouter.delete('/:secretId', async (req: AuthRequest, res, next) => {
   try {
+    await requireSecretAccess(req.params.secretId, req.user!.id);
     await secretsService.delete(req.params.secretId, req.user!.id);
     res.json({ ok: true });
   } catch (err) { next(err); }

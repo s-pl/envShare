@@ -1,10 +1,10 @@
 /**
- * Minimal paginated multiselect for compiled binaries.
- * Renders only pageSize lines at a time, writes no long summary line on confirm.
- * Handles: ↑↓ navigate, Space toggle, 'a' toggle all, Enter confirm, Ctrl+C abort.
+ * Minimal paginated single-select for compiled binaries.
+ * Renders only pageSize lines at a time.
+ * Handles: ↑↓ navigate, Enter confirm, Ctrl+C abort.
  *
  * Hardened for pkg compiled binaries:
- * - TTY guard: returns all checked in non-TTY environments (CI/pipe mode)
+ * - TTY guard: returns first choice in non-TTY environments (CI/pipe mode)
  * - Buffers escape sequences that may arrive split across data events
  * - Wraps setRawMode in try/catch with fallback
  */
@@ -14,26 +14,23 @@ const SHOW_CURSOR = '\x1b[?25h';
 const CLEAR_LINE  = '\r\x1b[K';
 const MOVE_UP     = (n: number) => `\x1b[${n}A`;
 
-export interface CheckboxChoice {
-  name: string;
+export interface SelectChoice {
+  title: string;
   value: string;
-  checked?: boolean;
-  group?: string;
 }
 
-export async function paginatedCheckbox(
+export async function paginatedSelect(
   message: string,
-  choices: CheckboxChoice[],
+  choices: SelectChoice[],
   pageSize = 16,
-): Promise<string[]> {
-  if (!choices.length) return [];
+): Promise<string | null> {
+  if (!choices.length) return null;
 
-  // TTY guard — in CI / pipe mode return all checked immediately
+  // TTY guard — in CI / pipe mode return first choice
   if (!process.stdin.isTTY) {
-    return choices.filter(c => c.checked !== false).map(c => c.value);
+    return choices[0].value;
   }
 
-  const checked = new Set(choices.filter(c => c.checked !== false).map(c => c.value));
   let cursor = 0;
   let offset = 0;
 
@@ -46,19 +43,10 @@ export async function paginatedCheckbox(
 
     for (let i = offset; i < end; i++) {
       const c = choices[i];
-      const isCursor  = i === cursor;
-      const isChecked = checked.has(c.value);
-
-      const pointer  = isCursor  ? '\x1b[36m❯\x1b[0m' : ' ';
-      const checkbox = isChecked ? '\x1b[32m◉\x1b[0m' : '\x1b[90m◯\x1b[0m';
-      const label    = isCursor
-        ? `\x1b[1m${c.name}\x1b[0m`
-        : isChecked
-          ? c.name
-          : `\x1b[90m${c.name}\x1b[0m`;
-      const group = c.group ? `  \x1b[90m(${c.group})\x1b[0m` : '';
-
-      lines.push(`${pointer} ${checkbox} ${label}${group}`);
+      const isCursor = i === cursor;
+      const pointer  = isCursor ? '\x1b[36m❯\x1b[0m' : ' ';
+      const label    = isCursor ? `\x1b[1m\x1b[36m${c.title}\x1b[0m` : c.title;
+      lines.push(`${pointer} ${label}`);
     }
 
     const hasAbove = offset > 0;
@@ -87,10 +75,10 @@ export async function paginatedCheckbox(
     write(lines.join('\n'));
   }
 
-  const header = () => `\x1b[1m?\x1b[0m ${message} \x1b[90m(↑↓ navigate · space toggle · a = all · enter confirm)\x1b[0m`;
+  const header = `\x1b[1m?\x1b[0m ${message} \x1b[90m(↑↓ navigate · enter select)\x1b[0m`;
 
   write(HIDE_CURSOR);
-  write(header() + '\n');
+  write(header + '\n');
   draw(true);
   write('\n');
   renderedLines += 1;
@@ -100,7 +88,7 @@ export async function paginatedCheckbox(
     let inputBuf = '';
     let flushTimer: ReturnType<typeof setTimeout> | null = null;
 
-    const cleanup = (result: string[] | null) => {
+    const cleanup = (value: string | null) => {
       if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
       try { stdin.setRawMode(false); } catch { /* ignore */ }
       stdin.pause();
@@ -111,12 +99,13 @@ export async function paginatedCheckbox(
       for (let i = 0; i < renderedLines + 1; i++) write(CLEAR_LINE + '\n');
       write(MOVE_UP(renderedLines + 1));
 
-      if (result !== null) {
-        write(`\x1b[32m✔\x1b[0m ${message} \x1b[90m(${result.length} selected)\x1b[0m\n`);
-        resolve(result);
+      if (value !== null) {
+        const chosen = choices.find(c => c.value === value);
+        write(`\x1b[32m✔\x1b[0m ${message} \x1b[90m${chosen?.title ?? value}\x1b[0m\n`);
+        resolve(value);
       } else {
         write(`\x1b[33m✖\x1b[0m ${message} \x1b[90m(aborted)\x1b[0m\n`);
-        resolve([]);
+        resolve(null);
       }
     };
 
@@ -131,23 +120,7 @@ export async function paginatedCheckbox(
 
     function handleKey(key: string) {
       if (key === '\x03') { cleanup(null); return; }
-      if (key === '\r' || key === '\n') { cleanup([...checked]); return; }
-
-      if (key === ' ') {
-        const val = choices[cursor].value;
-        if (checked.has(val)) checked.delete(val);
-        else checked.add(val);
-        draw();
-        return;
-      }
-
-      if (key === 'a' || key === 'A') {
-        if (checked.size === choices.length) checked.clear();
-        else choices.forEach(c => checked.add(c.value));
-        draw();
-        return;
-      }
-
+      if (key === '\r' || key === '\n') { cleanup(choices[cursor].value); return; }
       if (key === '\x1b[A') { moveCursor(-1); return; }
       if (key === '\x1b[B') { moveCursor(+1); return; }
       if (key === '\x1b[5~') { moveCursor(-pageSize); return; }
@@ -167,7 +140,6 @@ export async function paginatedCheckbox(
             handleKey(inputBuf.slice(0, 3));
             inputBuf = inputBuf.slice(3);
           } else if (force) {
-            // Timeout — flush whatever we have
             handleKey(inputBuf);
             inputBuf = '';
           } else {
@@ -194,8 +166,8 @@ export async function paginatedCheckbox(
     try {
       stdin.setRawMode(true);
     } catch {
-      // Cannot set raw mode (e.g. not a real TTY) — return all checked
-      resolve(choices.filter(c => c.checked !== false).map(c => c.value));
+      // Cannot set raw mode — return first choice
+      resolve(choices[0]?.value ?? null);
       return;
     }
     stdin.resume();

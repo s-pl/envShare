@@ -75,19 +75,42 @@ export const environmentService = {
     const normPath = filePath.trim().replace(/^\/+/, "") || ".env";
     const normName = name.trim() || "production";
 
-    const existing = await prisma.environment.findUnique({
-      where: { projectId_name: { projectId, name: normName } },
+    // Look up by name first, then fall back to filePath.
+    // A project starts with a "production" environment at ".env", so pushing
+    // ".env" without an explicit --env should reuse it rather than create a
+    // duplicate that would violate @@unique([projectId, filePath]).
+    const existing = await prisma.environment.findFirst({
+      where: {
+        projectId,
+        OR: [
+          { name: normName },
+          { filePath: normPath },
+        ],
+      },
       select: { id: true },
     });
 
     if (existing) return existing.id;
 
-    const created = await prisma.environment.create({
-      data: { projectId, name: normName, filePath: normPath },
-      select: { id: true },
-    });
-
-    return created.id;
+    // Neither name nor filePath exists — create it. Handle the unlikely race
+    // condition (two concurrent requests both miss the findFirst) gracefully.
+    try {
+      const created = await prisma.environment.create({
+        data: { projectId, name: normName, filePath: normPath },
+        select: { id: true },
+      });
+      return created.id;
+    } catch (err: any) {
+      if (err?.code === 'P2002') {
+        // Lost the race — fetch whichever row won
+        const winner = await prisma.environment.findFirst({
+          where: { projectId, OR: [{ name: normName }, { filePath: normPath }] },
+          select: { id: true },
+        });
+        if (winner) return winner.id;
+      }
+      throw err;
+    }
   },
 
   async delete(projectId: string, environmentId: string): Promise<void> {

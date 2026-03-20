@@ -123,9 +123,11 @@ function tabs(active: Tab) {
   );
 }
 
+const PAGE_SIZE = 16;
+
 // ─── Secrets tab ──────────────────────────────────────────────────────────────
 
-function SecretsTab({ project }: { project: Project }) {
+function SecretsTab({ project, onActiveInput }: { project: Project; onActiveInput?: (v: boolean) => void }) {
   const [secrets, setSecrets]   = useState<Secret[]>([]);
   const [loading, setLoading]   = useState(true);
   const [error, setError]       = useState('');
@@ -149,6 +151,10 @@ function SecretsTab({ project }: { project: Project }) {
     !filter || s.key.toLowerCase().includes(filter.toLowerCase())
   );
   const clamp = (n: number) => Math.max(0, Math.min(n, visible.length - 1));
+
+  useEffect(() => {
+    onActiveInput?.(filterMode || editing !== null);
+  }, [filterMode, editing, onActiveInput]);
 
   useInput((input, key) => {
     if (loading || error) return;
@@ -249,36 +255,45 @@ function SecretsTab({ project }: { project: Project }) {
           <Box paddingLeft={2}>
             <Text color="gray">{'  ' + 'KEY'.padEnd(28) + 'TYPE'.padEnd(11) + 'VALUE'}</Text>
           </Box>
-          {visible.map((s, i) => {
-            const active  = i === cursor;
-            const isRev   = revealed.has(s.id);
-            const isPend  = !s.isShared && !s.hasPersonalValue;
-            const display = isPend ? '(not set)' : isRev ? (s.value || '(empty)') : '••••••••••••';
-
+          {(() => {
+            const pageStart = Math.max(0, Math.min(cursor - Math.floor(PAGE_SIZE / 2), visible.length - PAGE_SIZE));
+            const pageEnd   = Math.min(pageStart + PAGE_SIZE, visible.length);
             return (
-              <Box key={s.id} paddingLeft={2} flexDirection="column">
-                <Box>
-                  <Text color={active ? 'blue' : 'white'}>{active ? '▶ ' : '  '}</Text>
-                  <Text bold={active} color={isPend ? 'yellow' : 'white'}>{s.key.padEnd(28)}</Text>
-                  {typeBadge(s)}
-                  <Text color={isRev ? 'green' : 'gray'}>  {display.slice(0, 32)}</Text>
-                </Box>
-                {/* Inline editor appears below the active row */}
-                {active && editing?.id === s.id && (
-                  <Box paddingLeft={4} marginTop={0}>
-                    <TextInput
-                      label={editing.mode === 'shared' ? '🌐 Shared value:' : '👤 Personal value:'}
-                      value={editing.val}
-                      onChange={v => setEditing(e => e ? { ...e, val: v } : null)}
-                      onSubmit={submitEdit}
-                      onCancel={() => setEditing(null)}
-                      placeholder="type value, Enter to save, Esc to cancel"
-                    />
-                  </Box>
-                )}
-              </Box>
+              <>
+                {pageStart > 0 && <Box paddingLeft={4}><Text color="gray">↑ {pageStart} more above</Text></Box>}
+                {visible.slice(pageStart, pageEnd).map((s, idx) => {
+                  const i      = pageStart + idx;
+                  const active = i === cursor;
+                  const isRev  = revealed.has(s.id);
+                  const isPend = !s.isShared && !s.hasPersonalValue;
+                  const display = isPend ? '(not set)' : isRev ? (s.value || '(empty)') : '••••••••••••';
+                  return (
+                    <Box key={s.id} paddingLeft={2} flexDirection="column">
+                      <Box>
+                        <Text color={active ? 'blue' : 'white'}>{active ? '▶ ' : '  '}</Text>
+                        <Text bold={active} color={isPend ? 'yellow' : 'white'}>{s.key.padEnd(28)}</Text>
+                        {typeBadge(s)}
+                        <Text color={isRev ? 'green' : 'gray'}>  {display.slice(0, 32)}</Text>
+                      </Box>
+                      {active && editing?.id === s.id && (
+                        <Box paddingLeft={4} marginTop={0}>
+                          <TextInput
+                            label={editing.mode === 'shared' ? '🌐 Shared value:' : '👤 Personal value:'}
+                            value={editing.val}
+                            onChange={v => setEditing(e => e ? { ...e, val: v } : null)}
+                            onSubmit={submitEdit}
+                            onCancel={() => setEditing(null)}
+                            placeholder="type value, Enter to save, Esc to cancel"
+                          />
+                        </Box>
+                      )}
+                    </Box>
+                  );
+                })}
+                {pageEnd < visible.length && <Box paddingLeft={4}><Text color="gray">↓ {visible.length - pageEnd} more below</Text></Box>}
+              </>
             );
-          })}
+          })()}
         </Box>
       )}
 
@@ -419,19 +434,30 @@ function PushTab({ project }: { project: Project }) {
         <Text color="gray">{'  ' + 'KEY'.padEnd(30) + 'VALUE (masked)'.padEnd(22) + 'TYPE'}</Text>
       </Box>
 
-      {entries.map((e, i) => {
-        const active = i === entryCursor;
+      {(() => {
+        const pageStart = Math.max(0, Math.min(entryCursor - Math.floor(PAGE_SIZE / 2), entries.length - PAGE_SIZE));
+        const pageEnd   = Math.min(pageStart + PAGE_SIZE, entries.length);
         return (
-          <Box key={e.key} paddingLeft={2}>
-            <Text color={active ? 'blue' : 'white'}>{active ? '▶ ' : '  '}</Text>
-            <Text bold={active}>{e.key.padEnd(30)}</Text>
-            <Text color="gray">{'•'.repeat(Math.min(e.value.length, 20)).padEnd(22)}</Text>
-            {e.isShared
-              ? <Text color="blue"> @shared</Text>
-              : <Text color="gray"> personal</Text>}
-          </Box>
+          <>
+            {pageStart > 0 && <Box paddingLeft={4}><Text color="gray">↑ {pageStart} more above</Text></Box>}
+            {entries.slice(pageStart, pageEnd).map((e, idx) => {
+              const i      = pageStart + idx;
+              const active = i === entryCursor;
+              return (
+                <Box key={e.key} paddingLeft={2}>
+                  <Text color={active ? 'blue' : 'white'}>{active ? '▶ ' : '  '}</Text>
+                  <Text bold={active}>{e.key.padEnd(30)}</Text>
+                  <Text color="gray">{'•'.repeat(Math.min(e.value.length, 20)).padEnd(22)}</Text>
+                  {e.isShared
+                    ? <Text color="blue"> @shared</Text>
+                    : <Text color="gray"> personal</Text>}
+                </Box>
+              );
+            })}
+            {pageEnd < entries.length && <Box paddingLeft={4}><Text color="gray">↓ {entries.length - pageEnd} more below</Text></Box>}
+          </>
         );
-      })}
+      })()}
 
       <Footer hints={['[↑↓] navigate', '[t] toggle shared/personal', '[p] push', '[Esc] back']} />
     </Box>
@@ -578,13 +604,16 @@ function MembersTab({ project }: { project: Project }) {
 
   return (
     <Box flexDirection="column">
-      {members.map(m => (
+      {members.slice(0, PAGE_SIZE).map(m => (
         <Box key={m.id} paddingLeft={2} gap={2}>
           <Text>{m.user.name.padEnd(20)}</Text>
           <Text color="gray">{m.user.email.padEnd(35)}</Text>
           {roleBadge(m.role)}
         </Box>
       ))}
+      {members.length > PAGE_SIZE && (
+        <Box paddingLeft={4}><Text color="gray">… and {members.length - PAGE_SIZE} more</Text></Box>
+      )}
       <Box paddingLeft={2} marginTop={1}>
         <Text color="gray">To invite: </Text>
         <Text color="cyan">envshare project invite email@example.com</Text>
@@ -598,20 +627,22 @@ function MembersTab({ project }: { project: Project }) {
 
 function ProjectScreen({ project, onBack }: { project: Project; onBack: () => void }) {
   const [tab, setTab] = useState<Tab>('secrets');
+  const [tabHasInput, setTabHasInput] = useState(false);
   const tabOrder: Tab[] = ['secrets', 'push', 'config', 'members'];
 
   useInput((_input, key) => {
     if (key.tab) {
       setTab(t => tabOrder[(tabOrder.indexOf(t) + 1) % tabOrder.length]);
     }
-    if (key.escape) onBack();
+    // Only go back when the active tab has no open input/filter
+    if (key.escape && !tabHasInput) onBack();
   });
 
   return (
     <Box flexDirection="column">
       <Header crumbs={['Projects', project.name, tab]} />
       {tabs(tab)}
-      {tab === 'secrets' && <SecretsTab project={project} />}
+      {tab === 'secrets' && <SecretsTab project={project} onActiveInput={setTabHasInput} />}
       {tab === 'push'    && <PushTab project={project} />}
       {tab === 'config'  && <ConfigTab />}
       {tab === 'members' && <MembersTab project={project} />}
@@ -644,15 +675,26 @@ function ProjectsScreen({
           <Text color="cyan">envshare project create</Text>
           <Text color="yellow"> first.</Text>
         </Box>
-      ) : (
-        projects.map((p, i) => (
-          <Box key={p.id} paddingLeft={2} gap={2}>
-            <Text color={i === cursor ? 'blue' : 'white'}>{i === cursor ? '▶ ' : '  '}</Text>
-            <Text bold={i === cursor}>{p.name.padEnd(32)}</Text>
-            {roleBadge(p.role)}
-          </Box>
-        ))
-      )}
+      ) : (() => {
+        const pageStart = Math.max(0, Math.min(cursor - Math.floor(PAGE_SIZE / 2), projects.length - PAGE_SIZE));
+        const pageEnd   = Math.min(pageStart + PAGE_SIZE, projects.length);
+        return (
+          <>
+            {pageStart > 0 && <Box paddingLeft={4}><Text color="gray">↑ {pageStart} more above</Text></Box>}
+            {projects.slice(pageStart, pageEnd).map((p, idx) => {
+              const i = pageStart + idx;
+              return (
+                <Box key={p.id} paddingLeft={2} gap={2}>
+                  <Text color={i === cursor ? 'blue' : 'white'}>{i === cursor ? '▶ ' : '  '}</Text>
+                  <Text bold={i === cursor}>{p.name.padEnd(32)}</Text>
+                  {roleBadge(p.role)}
+                </Box>
+              );
+            })}
+            {pageEnd < projects.length && <Box paddingLeft={4}><Text color="gray">↓ {projects.length - pageEnd} more below</Text></Box>}
+          </>
+        );
+      })()}
       <Footer hints={['[↑↓] navigate', '[Enter] open', '[q] quit']} />
     </Box>
   );

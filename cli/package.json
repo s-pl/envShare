@@ -1,6 +1,6 @@
 {
   "name": "envshare",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "envShare CLI — sync secrets to .env files",
   "bin": {
     "envshare": "dist/index.js"
@@ -21,22 +21,19 @@
     ]
   },
   "dependencies": {
-    "@types/react": "^19.2.14",
     "chalk": "^5.3.0",
     "commander": "^12.0.0",
     "conf": "^12.0.0",
-    "dotenv": "^16.4.5",
     "ink": "^5.2.1",
     "ink-spinner": "^5.0.0",
     "ora": "^8.0.1",
     "prompts": "^2.4.2",
-    "react": "^18.3.1",
-    "table": "^6.8.1",
-    "zod": "^3.22.4"
+    "react": "^18.3.1"
   },
   "devDependencies": {
     "@types/node": "^20.11.24",
     "@types/prompts": "^2.4.9",
+    "@types/react": "^19.2.14",
     "@yao-pkg/pkg": "^5.15.0",
     "esbuild": "^0.25.0",
     "tsx": "^4.7.1",
