@@ -57,6 +57,34 @@ membersRouter.get('/:projectId/members', async (req: AuthRequest, res, next) => 
   } catch (err) { next(err); }
 });
 
+// PATCH /api/v1/projects/:projectId/members/:userId — change role
+membersRouter.patch('/:projectId/members/:userId', async (req: AuthRequest, res, next) => {
+  try {
+    const body = z.object({
+      role: z.enum(['ADMIN', 'DEVELOPER', 'VIEWER']),
+    }).parse(req.body);
+
+    const requester = await prisma.projectMember.findUnique({
+      where: { projectId_userId: { projectId: req.params.projectId, userId: req.user!.id } },
+    });
+    if (!requester || requester.role !== 'ADMIN') {
+      throw new AppError(403, 'Only project ADMINs can change roles', 'FORBIDDEN_ROLE');
+    }
+
+    if (req.params.userId === req.user!.id) {
+      throw new AppError(400, 'You cannot change your own role', 'SELF_ROLE_CHANGE');
+    }
+
+    const member = await prisma.projectMember.update({
+      where: { projectId_userId: { projectId: req.params.projectId, userId: req.params.userId } },
+      data: { role: body.role },
+      include: { user: { select: { email: true, name: true } } },
+    });
+
+    res.json({ member });
+  } catch (err) { next(err); }
+});
+
 // DELETE /api/v1/projects/:projectId/members/:userId — remove a member
 membersRouter.delete('/:projectId/members/:userId', async (req: AuthRequest, res, next) => {
   try {

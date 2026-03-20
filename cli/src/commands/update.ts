@@ -4,6 +4,7 @@ import { join, dirname } from 'path';
 import { platform, arch } from 'os';
 import { spawn } from 'child_process';
 import chalk from 'chalk';
+import { config } from '../config.js';
 
 const IS_WINDOWS = platform() === 'win32';
 
@@ -39,13 +40,6 @@ export const updateCommand = new Command('update')
         ? __GITHUB_REPO__
         : 'OWNER/envShare';
 
-    // Build date injected at compile time — used to detect re-published releases
-    // that share the same version number (e.g. hotfix pushed to the same tag).
-    const buildDate =
-      typeof __BUILD_DATE__ !== 'undefined' && __BUILD_DATE__
-        ? new Date(__BUILD_DATE__)
-        : null;
-
     // ── 1. Fetch latest release from GitHub ───────────────────────────────────
     process.stdout.write('  Checking for updates…  ');
     let release: any;
@@ -67,23 +61,37 @@ export const updateCommand = new Command('update')
       process.exit(1);
     }
 
-    // Compare by asset publication date vs binary build date.
-    // This handles the case where the release tag stays the same (v1.0.0)
-    // but the CI re-publishes a newer binary to it.
-    const assetDate = new Date(asset.updated_at as string);
+    const remoteAssetDate = asset.updated_at as string; // ISO string from GitHub
     const latestTag = release.tag_name as string;
 
-    const isOutdated = buildDate === null || assetDate > buildDate;
-
-    console.log(chalk.dim(`${latestTag}  (published ${assetDate.toLocaleDateString()})`));
-
-    if (!isOutdated) {
-      console.log(chalk.green('  ✔ Already up to date.\n'));
-      return;
+    // Primary comparison: stored asset date from last install/update.
+    // If it matches the remote asset.updated_at exactly, we already have this binary.
+    // Fallback for first run (no stored date): compare against __BUILD_DATE__.
+    const storedAssetDate = config.get('installedAssetDate');
+    let isOutdated: boolean;
+    if (storedAssetDate) {
+      isOutdated = storedAssetDate !== remoteAssetDate;
+    } else {
+      // First run after install without stored date — use build timestamp as fallback.
+      // Allow a 5-minute grace window because the asset is uploaded a few seconds
+      // after compilation, so remoteAssetDate is always slightly newer than buildDate.
+      const buildDate =
+        typeof __BUILD_DATE__ !== 'undefined' && __BUILD_DATE__
+          ? new Date(__BUILD_DATE__)
+          : null;
+      if (buildDate) {
+        const diffMs = new Date(remoteAssetDate).getTime() - buildDate.getTime();
+        isOutdated = diffMs > 5 * 60 * 1000; // outdated only if remote is >5 min newer
+      } else {
+        isOutdated = true; // no reference at all — assume outdated
+      }
     }
 
-    if (buildDate) {
-      console.log(chalk.dim(`  Your build: ${buildDate.toLocaleDateString()}  →  Released: ${assetDate.toLocaleDateString()}`));
+    console.log(chalk.dim(`${latestTag}  (published ${new Date(remoteAssetDate).toLocaleDateString()})`));
+
+    if (!isOutdated) {
+      console.log(chalk.green('  Already up to date.\n'));
+      return;
     }
 
     if (opts.check) {
@@ -125,12 +133,14 @@ export const updateCommand = new Command('update')
         ].join('\r\n'),
       );
       spawn('cmd.exe', ['/c', batchPath], { detached: true, stdio: 'ignore' }).unref();
-      console.log(chalk.green(`  ✔ Update to ${latestTag} will complete when you open a new terminal.\n`));
+      config.set('installedAssetDate', remoteAssetDate);
+      console.log(chalk.green(`  Updated to ${latestTag}. Will take effect when you open a new terminal.\n`));
     } else {
       try {
         renameSync(tmpPath, currentExe);
         chmodSync(currentExe, 0o755);
-        console.log(chalk.green(`  ✔ Updated to ${latestTag}. Restart your terminal to use it.\n`));
+        config.set('installedAssetDate', remoteAssetDate);
+        console.log(chalk.green(`  Updated to ${latestTag}.\n`));
       } catch (err: any) {
         if (existsSync(tmpPath)) unlinkSync(tmpPath);
         console.error(chalk.red(`  Failed to replace binary: ${err.message}`));
