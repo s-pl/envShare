@@ -41,75 +41,77 @@ export const syncService = {
     const result: PushResult = { created: [], updated: [], sharedUpdated: [] };
     const projectKey = await getProjectKey(projectId);
 
-    for (const { key, value, isShared } of entries) {
-      const kHash = hashKey(key, projectKey);
+    await prisma.$transaction(async (tx) => {
+      for (const { key, value, isShared } of entries) {
+        const kHash = hashKey(key, projectKey);
 
-      let secret = await prisma.secret.findUnique({
-        where: { projectId_keyHash: { projectId, keyHash: kHash } },
-      });
-
-      const isNew = !secret;
-
-      if (!secret) {
-        const encKey = encrypt(key, projectKey);
-        secret = await prisma.secret.create({
-          data: {
-            projectId,
-            keyHash: kHash,
-            encryptedKey: encKey.encryptedData,
-            keyIV: encKey.iv,
-            keyTag: encKey.tag,
-            isShared,
-            environmentId: environmentId ?? null,
-            comment: isShared ? '🌐 Shared value' : undefined,
-            version: 1,
-          },
+        let secret = await tx.secret.findUnique({
+          where: { projectId_keyHash: { projectId, keyHash: kHash } },
         });
-        result.created.push(key);
-      } else {
-        // Update environmentId if newly provided
-        if (environmentId && !secret.environmentId) {
-          await prisma.secret.update({
-            where: { id: secret.id },
-            data: { environmentId },
-          });
-        }
-        result.updated.push(key);
-      }
 
-      if (isShared) {
-        await secretsService.setSharedValue(secret.id, value, userId);
-        result.sharedUpdated.push(key);
-      } else {
-        await secretsService.setPersonalValue(secret.id, value, userId);
+        const isNew = !secret;
 
-        if (isNew) {
-          await prisma.secretVersion.create({
+        if (!secret) {
+          const encKey = encrypt(key, projectKey);
+          secret = await tx.secret.create({
             data: {
-              secretId: secret.id,
-              userId,
-              action: 'created',
-              isShared: false,
+              projectId,
+              keyHash: kHash,
+              encryptedKey: encKey.encryptedData,
+              keyIV: encKey.iv,
+              keyTag: encKey.tag,
+              isShared,
+              environmentId: environmentId ?? null,
+              comment: isShared ? '🌐 Shared value' : undefined,
               version: 1,
             },
           });
+          result.created.push(key);
+        } else {
+          // Update environmentId if newly provided
+          if (environmentId && !secret.environmentId) {
+            await tx.secret.update({
+              where: { id: secret.id },
+              data: { environmentId },
+            });
+          }
+          result.updated.push(key);
+        }
+
+        if (isShared) {
+          await secretsService.setSharedValue(secret.id, value, userId);
+          result.sharedUpdated.push(key);
+        } else {
+          await secretsService.setPersonalValue(secret.id, value, userId);
+
+          if (isNew) {
+            await tx.secretVersion.create({
+              data: {
+                secretId: secret.id,
+                userId,
+                action: 'created',
+                isShared: false,
+                version: 1,
+              },
+            });
+          }
         }
       }
-    }
 
-    await prisma.auditLog.create({
-      data: {
-        action: 'SECRETS_PUSHED',
-        actor: userId,
-        resourceId: projectId,
-        resourceType: 'project',
-        metadata: {
-          created: result.created.length,
-          updated: result.updated.length,
-          sharedUpdated: result.sharedUpdated.length,
-          environmentId: environmentId ?? null,
+      await tx.auditLog.create({
+        data: {
+          action: 'SECRETS_PUSHED',
+          actor: userId,
+          resourceId: projectId,
+          resourceType: 'project',
+          metadata: {
+            created: result.created.length,
+            updated: result.updated.length,
+            sharedUpdated: result.sharedUpdated.length,
+            environmentId: environmentId ?? null,
+          },
         },
-      },
+      });
     });
 
     return result;

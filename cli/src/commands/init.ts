@@ -1,9 +1,9 @@
 import { Command } from 'commander';
-import prompts from 'prompts';
 import chalk from 'chalk';
 import { writeFileSync } from 'fs';
 import { join } from 'path';
 import { api, ApiError } from '../api.js';
+import { paginatedSelect } from '../utils/paginatedSelect.js';
 
 export const initCommand = new Command('init')
   .description('Link current directory to a project')
@@ -18,12 +18,10 @@ export const initCommand = new Command('init')
         process.exit(1);
       }
 
-      const { projectId } = await prompts({
-        type: 'select',
-        name: 'projectId',
-        message: 'Select project',
-        choices: projects.map(p => ({ title: `${p.name}`, value: p.id })),
-      });
+      const projectId = await paginatedSelect(
+        'Select project',
+        projects.map(p => ({ title: p.name, value: p.id })),
+      );
 
       if (!projectId) { process.exit(0); }
 

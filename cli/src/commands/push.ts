@@ -2,8 +2,8 @@ import { Command } from 'commander';
 import { readFileSync, existsSync, readdirSync, statSync } from 'fs';
 import { join, relative } from 'path';
 import chalk from 'chalk';
-import prompts from 'prompts';
 import { paginatedCheckbox } from '../utils/paginatedCheckbox.js';
+import { paginatedSelect } from '../utils/paginatedSelect.js';
 import { api, ApiError } from '../api.js';
 import { readProjectLink, readPushConfig, isAutoShared, isIgnored } from '../config.js';
 
@@ -57,11 +57,10 @@ async function selectEnvFile(filePaths: string[], pushCfg: ReturnType<typeof rea
     .filter(fp => existsSync(join(root, fp)))
     .map(fp => {
       const count = loadEntries(join(root, fp), pushCfg).length;
-      return { title: `${fp}  ${chalk.dim(`(${count} vars)`)}`, value: fp };
+      return { title: `${fp}  (${count} vars)`, value: fp };
     });
   if (!choices.length) return null;
-  const { file } = await prompts({ type: 'select', name: 'file', message: 'Which .env file?', choices });
-  return file ?? null;
+  return paginatedSelect('Which .env file?', choices);
 }
 
 const BATCH_SIZE = 10;
@@ -87,20 +86,23 @@ async function pushWithProgress(
   let done = 0;
   const totals = { created: 0, updated: 0, shared: 0 };
 
-  for (const batch of batches) {
-    const { result } = await api.post<{ result: { created: string[]; updated: string[]; sharedUpdated: string[] } }>(
-      `/sync/${projectId}/push`,
-      { secrets: batch, filePath, environmentName },
-    );
-    done += batch.length;
-    totals.created += result.created.length;
-    totals.updated += result.updated.length;
-    totals.shared  += result.sharedUpdated.length;
+  try {
+    for (const batch of batches) {
+      const { result } = await api.post<{ result: { created: string[]; updated: string[]; sharedUpdated: string[] } }>(
+        `/sync/${projectId}/push`,
+        { secrets: batch, filePath, environmentName },
+      );
+      done += batch.length;
+      totals.created += result.created.length;
+      totals.updated += result.updated.length;
+      totals.shared  += result.sharedUpdated.length;
 
-    process.stdout.write(`\r  ${bar(done, entries.length)}  ${done}/${entries.length}`);
+      process.stdout.write(`\r  ${bar(done, entries.length)}  ${done}/${entries.length}`);
+    }
+  } finally {
+    process.stdout.write('\r\x1b[K'); // clear progress line
   }
 
-  process.stdout.write('\r\x1b[K'); // clear progress line
   return totals;
 }
 
