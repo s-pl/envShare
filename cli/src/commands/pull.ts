@@ -7,7 +7,6 @@ import { Command } from 'commander';
 import { writeFileSync, mkdirSync } from 'fs';
 import { join, dirname } from 'path';
 import chalk from 'chalk';
-import ora from 'ora';
 import { api, ApiError } from '../api.js';
 import { readProjectLink } from '../config.js';
 
@@ -53,7 +52,7 @@ export const pullCommand = new Command('pull')
       process.exit(1);
     }
 
-    const spinner = ora(`Pulling secrets for ${link.projectName}...`).start();
+    process.stdout.write(`  Pulling secrets for ${link.projectName}...\n`);
 
     try {
       const pullUrl = opts.env
@@ -65,7 +64,6 @@ export const pullCommand = new Command('pull')
       if (opts.env) {
         secrets = secrets.filter(s => s.environmentName === opts.env);
       }
-      spinner.stop();
 
       if (opts.output) {
         // Legacy / single-file mode: write everything to --output
@@ -102,7 +100,6 @@ export const pullCommand = new Command('pull')
 
       console.log();
     } catch (err) {
-      spinner.fail();
       if (err instanceof ApiError) { console.error(chalk.red(`  Error: ${err.message}`)); }
       else throw err;
       process.exit(1);
