@@ -10,6 +10,11 @@ export const uiCommand = new Command('ui')
       process.exit(1);
     }
 
+    if (!process.stdout.isTTY) {
+      console.error(chalk.red('  The UI requires an interactive terminal.'));
+      process.exit(1);
+    }
+
     // Lazy import Ink so it doesn't affect startup time of other commands
     const { render } = await import('ink');
     const { createElement } = await import('react');
