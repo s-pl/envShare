@@ -4,7 +4,7 @@ import { join, relative } from 'path';
 import chalk from 'chalk';
 import ora from 'ora';
 import prompts from 'prompts';
-import checkbox, { Separator } from '@inquirer/checkbox';
+import { paginatedCheckbox } from '../utils/paginatedCheckbox.js';
 import { api, ApiError } from '../api.js';
 import { readProjectLink, readPushConfig, isAutoShared, isIgnored } from '../config.js';
 
@@ -88,29 +88,16 @@ async function selectVariables(
   const shared   = entries.filter(e => e.isShared);
   const personal = entries.filter(e => !e.isShared);
 
-  const choices: any[] = [];
+  const choices = [
+    ...shared.map(e => ({ name: e.key, value: e.key, checked: true, group: 'shared' })),
+    ...personal.map(e => ({ name: e.key, value: e.key, checked: true, group: 'personal' })),
+  ];
 
-  if (shared.length) {
-    choices.push(new Separator(chalk.blue('── shared ──')));
-    choices.push(...shared.map(e => ({ name: e.key, value: e.key, checked: true })));
-  }
-  if (personal.length) {
-    choices.push(new Separator(chalk.dim('── personal ──')));
-    choices.push(...personal.map(e => ({ name: e.key, value: e.key, checked: true })));
-  }
-
-  let selected: string[];
-  try {
-    selected = await checkbox({
-      message: 'Select variables to push  (space to toggle, a = all, enter to confirm)',
-      choices,
-      pageSize: Math.min(entries.length + 4, 18),
-      loop: false,
-    });
-  } catch {
-    // User pressed Ctrl+C
-    return [];
-  }
+  const selected = await paginatedCheckbox(
+    'Select variables to push',
+    choices,
+    18,
+  );
 
   if (!selected.length) return [];
   const selectedSet = new Set<string>(selected);
