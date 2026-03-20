@@ -171,6 +171,7 @@ Full privacy policy: `/privacy` (in-app) or `PRIVACY.md`.
 | `JWT_SECRET` | ✓ | 64-char hex string for signing JWTs. Rotation invalidates all access tokens. |
 | `POSTGRES_PASSWORD` | ✓ | Database password. |
 | `ALLOWED_ORIGINS` | ✓ | CORS origins (comma-separated). Must match the exact frontend origin. |
+| `TRUST_PROXY` | — | Express trust proxy setting. Keep `false` unless traffic comes through a trusted reverse proxy (e.g. `uniquelocal`, `1`). |
 | `NODE_ENV` | — | Set to `production` to enable HTTPS-only cookies and file logging. |
 | `COOKIE_PATH` | — | Override the refresh-token cookie path (default: `/api/v1/auth`). |
 | `AUDIT_LOG_RETENTION_DAYS` | — | Days to retain audit logs before purge (default: `365`). Minimum recommended: `90`. |

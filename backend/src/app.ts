@@ -25,17 +25,28 @@ import { prisma } from "./utils/prisma";
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+function parseTrustProxySetting(value: string | undefined): boolean | number | string {
+  const raw = (value ?? "false").trim().toLowerCase();
+  if (!raw || raw === "false") return false;
+  if (raw === "true") return true;
+  if (/^\d+$/.test(raw)) return Number(raw);
+  // Express supports subnet names / CIDRs / CSV via trust proxy setting.
+  return raw;
+}
+
+const TRUST_PROXY = parseTrustProxySetting(process.env.TRUST_PROXY);
+
 /**
- * ISO 27001 A.13.1 / GDPR Art. 32 — when running behind nginx or Caddy, the
- * app sees the proxy's IP instead of the real client IP. Setting trust proxy
- * tells Express to read X-Forwarded-For, which nginx sets via:
- *   proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+ * ISO 27001 A.13.1 / GDPR Art. 32 — trust proxy must be explicitly scoped to
+ * trusted reverse proxies only. Never trust client-supplied X-Forwarded-For
+ * when the backend is directly reachable from the internet.
  *
- * Value "1" means: trust exactly one hop (the immediate upstream proxy).
- * This is the correct setting when there is a single reverse-proxy in front.
- * Increase to "2" if you add a CDN/load-balancer in front of nginx.
+ * TRUST_PROXY examples:
+ *   - false  -> safest default when backend is exposed directly
+ *   - 1      -> trust one upstream hop
+ *   - uniquelocal -> trust RFC1918/private proxy networks (Docker/Caddy)
  */
-app.set("trust proxy", 1);
+app.set("trust proxy", TRUST_PROXY);
 
 // ─── Security headers (Helmet) ────────────────────────────────────────────────
 //

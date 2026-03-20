@@ -37,6 +37,9 @@ services:
       MASTER_ENCRYPTION_KEY: ${MASTER_ENCRYPTION_KEY:?MASTER_ENCRYPTION_KEY is required}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-*}
       PORT: 3000
+      # Keep false when backend is exposed directly. If deployed behind a
+      # reverse proxy, override in an environment-specific compose overlay.
+      TRUST_PROXY: ${TRUST_PROXY:-false}
       # ── GDPR Art. 5(1)(e) — Storage limitation ──────────────────────────────
       # Number of days to retain audit log entries (including IP addresses).
       # After this window, entries are automatically purged by the daily

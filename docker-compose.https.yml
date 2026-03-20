@@ -30,6 +30,9 @@ services:
 
   # Remove direct port exposure — Caddy is the only entry point
   backend:
+    environment:
+      # Trust Docker private-network proxy hops (Caddy) in HTTPS deployment.
+      TRUST_PROXY: ${TRUST_PROXY:-uniquelocal}
     ports: !reset []
 
 volumes:
