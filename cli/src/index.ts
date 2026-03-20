@@ -21,7 +21,7 @@ import { auditCommand }    from './commands/audit.js';
 import { ApiError }        from './api.js';
 
 const program = new Command();
-program.name('envshare').description('envShare / Secrets management CLI').version('1.0.0');
+program.name('envshare').description('envShare / Secrets management CLI').version('1.0.5');
 
 program.addCommand(versionCommand);
 program.addCommand(installCommand);
