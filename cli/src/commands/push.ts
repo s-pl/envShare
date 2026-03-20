@@ -4,6 +4,7 @@ import { join, relative } from 'path';
 import chalk from 'chalk';
 import ora from 'ora';
 import prompts from 'prompts';
+import checkbox, { Separator } from '@inquirer/checkbox';
 import { api, ApiError } from '../api.js';
 import { readProjectLink, readPushConfig, isAutoShared, isIgnored } from '../config.js';
 
@@ -84,20 +85,34 @@ async function selectVariables(
 ): Promise<{ key: string; value: string; isShared: boolean }[]> {
   if (!entries.length) return [];
 
-  const { selected } = await prompts({
-    type: 'multiselect',
-    name: 'selected',
-    message: 'Select variables to push  (space to toggle, a to toggle all, enter to confirm)',
-    choices: entries.map(e => ({
-      title: `${e.key.padEnd(32)} ${e.isShared ? chalk.blue('@shared') : chalk.dim('personal')}`,
-      value: e.key,
-      selected: true,
-    })),
-    instructions: false,
-    min: 1,
-  });
+  const shared   = entries.filter(e => e.isShared);
+  const personal = entries.filter(e => !e.isShared);
 
-  if (!selected) return [];
+  const choices: any[] = [];
+
+  if (shared.length) {
+    choices.push(new Separator(chalk.blue('── shared ──')));
+    choices.push(...shared.map(e => ({ name: e.key, value: e.key, checked: true })));
+  }
+  if (personal.length) {
+    choices.push(new Separator(chalk.dim('── personal ──')));
+    choices.push(...personal.map(e => ({ name: e.key, value: e.key, checked: true })));
+  }
+
+  let selected: string[];
+  try {
+    selected = await checkbox({
+      message: 'Select variables to push  (space to toggle, a = all, enter to confirm)',
+      choices,
+      pageSize: Math.min(entries.length + 4, 18),
+      loop: false,
+    });
+  } catch {
+    // User pressed Ctrl+C
+    return [];
+  }
+
+  if (!selected.length) return [];
   const selectedSet = new Set<string>(selected);
   return entries.filter(e => selectedSet.has(e.key));
 }
