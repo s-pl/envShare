@@ -71,7 +71,9 @@ export async function paginatedSelect(
 
   function draw(firstDraw = false) {
     if (!firstDraw) {
-      write(MOVE_UP(totalLines));
+      // Cursor is at end of last content line (row H+totalLines).
+      // Go back to first content line (row H+1) = totalLines-1 rows up.
+      write(MOVE_UP(totalLines - 1));
     }
     const lines = renderPage();
     for (let i = 0; i < totalLines; i++) {
@@ -101,11 +103,11 @@ export async function paginatedSelect(
       process.removeListener('SIGTERM', sigHandler);
       write(SHOW_CURSOR);
 
-      // Clear header + content: move to header, clear all, reposition
-      const clearCount = totalLines + 1; // +1 for header
-      write('\n' + MOVE_UP(totalLines + 1));
+      // Clear header + content: cursor at H+totalLines, go to H, clear all
+      const clearCount = totalLines + 1; // header + totalLines content rows
+      write(MOVE_UP(totalLines));        // H+totalLines → H
       for (let i = 0; i < clearCount; i++) write(CLEAR_LINE + '\n');
-      write(MOVE_UP(clearCount));
+      write(MOVE_UP(clearCount));        // back to H
 
       if (value !== null) {
         const chosen = choices.find(c => c.value === value);
