@@ -41,7 +41,7 @@
     "@types/prompts": "^2.4.9",
     "@types/react": "^19.2.14",
     "@yao-pkg/pkg": "^5.15.0",
-    "esbuild": "^0.25.0",
+    "esbuild": "^0.27.0",
     "tsx": "^4.7.1",
     "typescript": "^5.3.3",
     "vitest": "^4.1.1"
