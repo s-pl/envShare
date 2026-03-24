@@ -61,12 +61,12 @@ export const syncService = {
           });
           result.created.push(key);
         } else {
-          // Update environmentId if newly provided
-          if (environmentId && !secret.environmentId) {
-            await tx.secret.update({
-              where: { id: secret.id },
-              data: { environmentId },
-            });
+          // Sync environmentId and isShared if they changed
+          const patch: Record<string, unknown> = {};
+          if (environmentId && !secret.environmentId) patch.environmentId = environmentId;
+          if (secret.isShared !== isShared) patch.isShared = isShared;
+          if (Object.keys(patch).length) {
+            await prisma.secret.update({ where: { id: secret.id }, data: patch });
           }
           result.updated.push(key);
         }

@@ -11,6 +11,6 @@ export async function getProjectKey(projectId: string): Promise<string> {
     where: { id: projectId },
     select: { encryptedKey: true },
   });
-  if (!project) throw new AppError(404, 'Project not found');
+  if (!project) throw new AppError(404, 'Project not found', 'PROJECT_NOT_FOUND');
   return unwrapKey(JSON.parse(project.encryptedKey), getMasterKey());
 }
