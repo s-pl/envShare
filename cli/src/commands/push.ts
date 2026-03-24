@@ -1,5 +1,5 @@
 import { Command } from 'commander';
-import { readFileSync, existsSync, readdirSync, statSync, lstatSync, realpathSync } from 'fs';
+import { readFileSync, existsSync, readdirSync, lstatSync, realpathSync } from 'fs';
 import { join, relative } from 'path';
 import chalk from 'chalk';
 import { paginatedCheckbox } from '../utils/paginatedCheckbox.js';
@@ -10,35 +10,56 @@ import { parseDotenv } from '../utils/parseDotenv.js';
 
 export { parseDotenv };
 
-const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'build', '.cache', 'coverage', 'tmp', '.next', 'out']);
+const ENV_FILE_RE = /^\.env(\..+)?$/;
+const SKIP_DIRS = new Set([
+  'node_modules', '.git', 'dist', 'build', '.cache', 'coverage',
+  'tmp', '.next', 'out', '.venv', 'venv', '__pycache__', '.idea',
+  '.vscode', 'vendor', '.terraform', '.docker', '.turbo', '.nuxt',
+  '.output', '.svelte-kit', 'target', 'bin', 'obj',
+]);
 
-function findEnvFiles(dir: string, root: string, depth = 0, visited = new Set<string>()): string[] {
-  if (depth > 4) return [];
-
-  // Resolve real path to detect symlink loops
-  let realDir: string;
-  try { realDir = realpathSync(dir); } catch { return []; }
-  if (visited.has(realDir)) return [];
-  visited.add(realDir);
-
+/**
+ * Find .env files recursively throughout the project.
+ * Skips common non-project directories, symlinks, and dot-directories.
+ * Deduplicates by resolved real path to prevent the same file appearing twice.
+ */
+export function findEnvFiles(root: string): string[] {
   const results: string[] = [];
-  let entries: string[];
-  try { entries = readdirSync(dir); } catch { return []; }
+  const seenRealPaths = new Set<string>();
 
-  for (const name of entries) {
-    if (SKIP_DIRS.has(name)) continue;
-    const abs = join(dir, name);
-    let lst;
-    try { lst = lstatSync(abs); } catch { continue; }
+  function walk(dir: string, depth: number) {
+    if (depth > 10) return; // safety cap
 
-    if (lst.isSymbolicLink()) continue; // never follow symlinks
-    if (lst.isDirectory()) {
-      results.push(...findEnvFiles(abs, root, depth + 1, visited));
-    } else if (lst.isFile() && /^\.env(\..+)?$/.test(name) && name !== '.env.example') {
-      results.push(relative(root, abs));
+    let entries: string[];
+    try { entries = readdirSync(dir); } catch { return; }
+
+    for (const name of entries) {
+      const abs = join(dir, name);
+      let lst;
+      try { lst = lstatSync(abs); } catch { continue; }
+
+      // Never follow symlinks — they caused duplication
+      if (lst.isSymbolicLink()) continue;
+
+      if (lst.isFile() && ENV_FILE_RE.test(name) && name !== '.env.example') {
+        // Deduplicate by real path (handles hardlinks, bind mounts, etc.)
+        const real = safeRealpath(abs);
+        if (real && !seenRealPaths.has(real)) {
+          seenRealPaths.add(real);
+          results.push(relative(root, abs));
+        }
+      } else if (lst.isDirectory() && !SKIP_DIRS.has(name) && !name.startsWith('.')) {
+        walk(abs, depth + 1);
+      }
     }
   }
-  return results;
+
+  walk(root, 0);
+  return results.sort();
+}
+
+function safeRealpath(p: string): string | null {
+  try { return realpathSync(p); } catch { return null; }
 }
 
 function loadEntries(absPath: string, pushCfg: ReturnType<typeof readPushConfig>) {
@@ -126,7 +147,7 @@ export const pushCommand = new Command('push')
     if (file) {
       filePaths = [file];
     } else {
-      filePaths = findEnvFiles(root, root);
+      filePaths = findEnvFiles(root);
       if (!filePaths.length) filePaths = [pushCfg.defaultFile];
     }
 
