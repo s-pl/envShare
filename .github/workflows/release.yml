@@ -43,7 +43,8 @@ jobs:
 
       - name: Install dependencies
         working-directory: cli
-        run: npm ci
+        run: |
+          npm ci || (echo "::error::package-lock.json is out of sync. Run 'npm install' in cli/ and commit the lock file." && exit 1)
 
       - name: Extract version
         id: meta
