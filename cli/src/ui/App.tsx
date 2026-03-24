@@ -69,7 +69,7 @@ function Err({ msg, onBack }: { msg: string; onBack: () => void }) {
   return (
     <Box flexDirection="column" paddingLeft={2} paddingTop={1}>
       <Text color="red">✖  {msg}</Text>
-      <Text color="gray">{'\n'}Press any key to go back.</Text>
+      <Text color="gray">{'\n'}Press a key to go back.</Text>
     </Box>
   );
 }
