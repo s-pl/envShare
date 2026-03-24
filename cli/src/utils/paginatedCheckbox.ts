@@ -82,7 +82,7 @@ export async function paginatedCheckbox(
 
   function draw(firstDraw = false) {
     if (!firstDraw) {
-      write(MOVE_UP(totalLines));
+      write(MOVE_UP(totalLines - 1));
     }
     const lines = renderPage();
     for (let i = 0; i < totalLines; i++) {
@@ -112,9 +112,9 @@ export async function paginatedCheckbox(
       process.removeListener('SIGTERM', sigHandler);
       write(SHOW_CURSOR);
 
-      // Clear header + content
+      // Clear header + content: cursor at H+totalLines, go to H, clear all
       const clearCount = totalLines + 1;
-      write('\n' + MOVE_UP(totalLines + 1));
+      write(MOVE_UP(totalLines));
       for (let i = 0; i < clearCount; i++) write(CLEAR_LINE + '\n');
       write(MOVE_UP(clearCount));
 
