@@ -69,8 +69,8 @@ export const secretsService = {
       where: { id: secretId },
       select: { projectId: true, isShared: true },
     });
-    if (!secret) throw new AppError(404, 'Secret not found');
-    if (secret.isShared) throw new AppError(400, 'This secret is shared — update the shared value instead');
+    if (!secret) throw new AppError(404, 'Secret not found', 'SECRET_NOT_FOUND');
+    if (secret.isShared) throw new AppError(400, 'This secret is shared — update the shared value instead', 'SECRET_IS_SHARED');
 
     const projectKey = await getProjectKey(secret.projectId);
     const encVal = encrypt(value, projectKey);
@@ -87,7 +87,7 @@ export const secretsService = {
       where: { id: secretId },
       select: { projectId: true, isShared: true, sharedEncryptedValue: true, version: true },
     });
-    if (!secret) throw new AppError(404, 'Secret not found');
+    if (!secret) throw new AppError(404, 'Secret not found', 'SECRET_NOT_FOUND');
 
     const projectKey = await getProjectKey(secret.projectId);
     const encVal = encrypt(value, projectKey);
@@ -126,7 +126,7 @@ export const secretsService = {
       where: { id: secretId },
       select: { projectId: true, encryptedKey: true, keyIV: true, keyTag: true, version: true },
     });
-    if (!secret) throw new AppError(404, 'Secret not found');
+    if (!secret) throw new AppError(404, 'Secret not found', 'SECRET_NOT_FOUND');
 
     const projectKey = await getProjectKey(secret.projectId);
     const keyName = decrypt(

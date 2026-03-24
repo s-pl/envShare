@@ -120,7 +120,7 @@ export const environmentService = {
     });
 
     if (!env || env.projectId !== projectId) {
-      throw new AppError(404, "Environment not found", "NOT_FOUND");
+      throw new AppError(404, "Environment not found", "ENV_NOT_FOUND");
     }
 
     // Prevent deleting the last environment in a project
@@ -129,7 +129,7 @@ export const environmentService = {
       throw new AppError(
         400,
         "Cannot delete the last environment. A project must have at least one.",
-        "CONFLICT",
+        "ENV_LAST_REMAINING",
       );
     }
 

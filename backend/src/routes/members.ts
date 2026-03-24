@@ -29,7 +29,7 @@ membersRouter.post('/:projectId/members', async (req: AuthRequest, res, next) =>
     const existing = await prisma.projectMember.findUnique({
       where: { projectId_userId: { projectId: req.params.projectId, userId: target.id } },
     });
-    if (existing) throw new AppError(409, `${body.email} is already a member`, 'CONFLICT');
+    if (existing) throw new AppError(409, `${body.email} is already a member`, 'MEMBER_ALREADY_EXISTS');
 
     const member = await prisma.projectMember.create({
       data: { projectId: req.params.projectId, userId: target.id, role: body.role },
