@@ -32,10 +32,29 @@ describe('findEnvFiles', () => {
     expect(result).toHaveLength(2);
   });
 
+  // ── Excluded patterns ─────────────────────────────────────────────────────
+
   it('excludes .env.example', () => {
     writeFileSync(join(root, '.env'), '');
     writeFileSync(join(root, '.env.example'), '');
     expect(findEnvFiles(root)).toEqual(['.env']);
+  });
+
+  it('excludes .env.template', () => {
+    writeFileSync(join(root, '.env'), '');
+    writeFileSync(join(root, '.env.template'), '');
+    expect(findEnvFiles(root)).toEqual(['.env']);
+  });
+
+  it('excludes .env.sample and .env.bak', () => {
+    writeFileSync(join(root, '.env.sample'), '');
+    writeFileSync(join(root, '.env.bak'), '');
+    expect(findEnvFiles(root)).toEqual([]);
+  });
+
+  it('excludes multi-dot suffixes like .env.test.bad', () => {
+    writeFileSync(join(root, '.env.test.bad'), '');
+    expect(findEnvFiles(root)).toEqual([]);
   });
 
   it('ignores non-env files', () => {
@@ -81,6 +100,12 @@ describe('findEnvFiles', () => {
     expect(findEnvFiles(root)).toEqual([]);
   });
 
+  it('skips docker directories', () => {
+    mkdirSync(join(root, 'docker'));
+    writeFileSync(join(root, 'docker', '.env'), '');
+    expect(findEnvFiles(root)).toEqual([]);
+  });
+
   it('skips dot-directories (.git, .cache, .vscode, etc.)', () => {
     for (const dir of ['.git', '.cache', '.vscode', '.idea']) {
       mkdirSync(join(root, dir), { recursive: true });
@@ -104,6 +129,13 @@ describe('findEnvFiles', () => {
     expect(findEnvFiles(root)).toEqual(['app/.env']);
   });
 
+  it('skips docker subdirectories inside services', () => {
+    mkdirSync(join(root, 'project_service', 'docker'), { recursive: true });
+    writeFileSync(join(root, 'project_service', '.env'), '');
+    writeFileSync(join(root, 'project_service', 'docker', '.env'), '');
+    expect(findEnvFiles(root)).toEqual(['project_service/.env']);
+  });
+
   // ── Symlinks are ignored ──────────────────────────────────────────────────
 
   it('ignores symlinked .env files', () => {
@@ -120,7 +152,7 @@ describe('findEnvFiles', () => {
     expect(result).toEqual(['real-service/.env']);
   });
 
-  // ── Deduplication ─────────────────────────────────────────────────────────
+  // ── Sorting & dedup ───────────────────────────────────────────────────────
 
   it('returns sorted results', () => {
     mkdirSync(join(root, 'z-service'));

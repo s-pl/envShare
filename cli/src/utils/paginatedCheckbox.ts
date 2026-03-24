@@ -7,6 +7,7 @@
  * - TTY guard: returns all checked in non-TTY environments (CI/pipe mode)
  * - Buffers escape sequences that may arrive split across data events
  * - Wraps setRawMode in try/catch with fallback
+ * - Fixed-height rendering prevents ghost lines when scrolling
  */
 
 const HIDE_CURSOR = '\x1b[?25l';
@@ -40,7 +41,10 @@ export async function paginatedCheckbox(
   const write = (s: string) => process.stdout.write(s);
   const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, n));
 
-  function renderPage() {
+  // Fixed number of lines: always pageSize + 1 (for hint/padding).
+  const totalLines = Math.min(pageSize, choices.length) + 1;
+
+  function renderPage(): string[] {
     const lines: string[] = [];
     const end = Math.min(offset + pageSize, choices.length);
 
@@ -70,21 +74,21 @@ export async function paginatedCheckbox(
 
     if (hint) lines.push(`\x1b[90m  ${hint}\x1b[0m`);
 
+    // Pad to fixed height so MOVE_UP distance is always the same
+    while (lines.length < totalLines) lines.push('');
+
     return lines;
   }
 
-  let renderedLines = 0;
-
   function draw(firstDraw = false) {
-    if (!firstDraw && renderedLines > 0) {
-      write(MOVE_UP(renderedLines));
-      for (let i = 0; i < renderedLines; i++) write(CLEAR_LINE + (i < renderedLines - 1 ? '\n' : ''));
-      write(MOVE_UP(renderedLines - 1));
+    if (!firstDraw) {
+      write(MOVE_UP(totalLines));
     }
-
     const lines = renderPage();
-    renderedLines = lines.length;
-    write(lines.join('\n'));
+    for (let i = 0; i < totalLines; i++) {
+      write(CLEAR_LINE + lines[i]);
+      if (i < totalLines - 1) write('\n');
+    }
   }
 
   const header = () => `\x1b[1m?\x1b[0m ${message} \x1b[90m(↑↓ navigate · space toggle · a = all · enter confirm)\x1b[0m`;
@@ -92,8 +96,6 @@ export async function paginatedCheckbox(
   write(HIDE_CURSOR);
   write(header() + '\n');
   draw(true);
-  write('\n');
-  renderedLines += 1;
 
   return new Promise((resolve) => {
     const { stdin } = process;
@@ -110,9 +112,11 @@ export async function paginatedCheckbox(
       process.removeListener('SIGTERM', sigHandler);
       write(SHOW_CURSOR);
 
-      write(MOVE_UP(renderedLines + 1));
-      for (let i = 0; i < renderedLines + 1; i++) write(CLEAR_LINE + '\n');
-      write(MOVE_UP(renderedLines + 1));
+      // Clear header + content
+      const clearCount = totalLines + 1;
+      write('\n' + MOVE_UP(totalLines + 1));
+      for (let i = 0; i < clearCount; i++) write(CLEAR_LINE + '\n');
+      write(MOVE_UP(clearCount));
 
       if (result !== null) {
         write(`\x1b[32m✔\x1b[0m ${message} \x1b[90m(${result.length} selected)\x1b[0m\n`);
