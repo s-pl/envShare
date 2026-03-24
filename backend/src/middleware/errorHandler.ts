@@ -101,7 +101,7 @@ export function errorHandler(
   if (
     err.message.includes('Unsupported state or unable to authenticate data') ||
     err.message.includes('Invalid IV length') ||
-    err.message.includes('error:') // native OpenSSL error strings
+    /^error:[0-9A-Fa-f]+:/.test(err.message) // native OpenSSL error strings
   ) {
     logger.error('Decryption failed', { message: err.message });
     res.status(500).json({

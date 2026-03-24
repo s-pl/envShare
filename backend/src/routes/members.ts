@@ -95,6 +95,20 @@ membersRouter.delete('/:projectId/members/:userId', async (req: AuthRequest, res
       throw new AppError(403, 'Only project ADMINs can remove members', 'FORBIDDEN_ROLE');
     }
 
+    const target = await prisma.projectMember.findUnique({
+      where: { projectId_userId: { projectId: req.params.projectId, userId: req.params.userId } },
+    });
+
+    // Prevent orphaning the project by removing the last ADMIN
+    if (target?.role === 'ADMIN') {
+      const adminCount = await prisma.projectMember.count({
+        where: { projectId: req.params.projectId, role: 'ADMIN' },
+      });
+      if (adminCount <= 1) {
+        throw new AppError(400, 'Cannot remove the last admin. Promote another member first.', 'LAST_ADMIN');
+      }
+    }
+
     await prisma.projectMember.delete({
       where: { projectId_userId: { projectId: req.params.projectId, userId: req.params.userId } },
     });

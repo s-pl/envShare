@@ -6,17 +6,9 @@
  *   isShared=true   → single shared value visible to all (server URLs, etc.)
  */
 import { prisma } from '../utils/prisma';
-import { encrypt, decrypt, getMasterKey, unwrapKey } from '../utils/crypto';
+import { encrypt, decrypt } from '../utils/crypto';
 import { AppError } from '../middleware/errorHandler';
-
-async function getProjectKey(projectId: string): Promise<string> {
-  const project = await prisma.project.findUnique({
-    where: { id: projectId },
-    select: { encryptedKey: true },
-  });
-  if (!project) throw new AppError(404, 'Project not found');
-  return unwrapKey(JSON.parse(project.encryptedKey), getMasterKey());
-}
+import { getProjectKey } from '../utils/projectKey';
 
 export interface SecretView {
   id: string;

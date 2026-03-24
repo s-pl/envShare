@@ -22,6 +22,11 @@ export const registerCommand = new Command('register')
       process.exit(0);
     }
 
+    if (answers.password.length < 12) {
+      console.error(chalk.red('  Password must be at least 12 characters.'));
+      process.exit(1);
+    }
+
     try {
       const { user } = await api.post<{ user: any }>('/auth/register', {
         name: answers.name,

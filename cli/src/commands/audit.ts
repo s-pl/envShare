@@ -2,6 +2,7 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 import { api, ApiError } from '../api.js';
 import { readProjectLink } from '../config.js';
+import { padEnd } from '../utils/ansiPad.js';
 
 interface AuditItem {
   id: string;
@@ -31,8 +32,22 @@ export const auditCommand = new Command('audit')
       resourceId: link.projectId,
       limit: opts.limit,
     });
-    if (opts.from) params.set('from', new Date(opts.from).toISOString());
-    if (opts.to)   params.set('to',   new Date(opts.to).toISOString());
+    if (opts.from) {
+      const d = new Date(opts.from);
+      if (isNaN(d.getTime())) {
+        console.error(chalk.red(`  Invalid --from date: "${opts.from}"`));
+        process.exit(1);
+      }
+      params.set('from', d.toISOString());
+    }
+    if (opts.to) {
+      const d = new Date(opts.to);
+      if (isNaN(d.getTime())) {
+        console.error(chalk.red(`  Invalid --to date: "${opts.to}"`));
+        process.exit(1);
+      }
+      params.set('to', d.toISOString());
+    }
     if (opts.action) params.set('action', opts.action);
 
     try {
@@ -59,7 +74,7 @@ export const auditCommand = new Command('audit')
       for (const e of items) {
         const when = new Date(e.createdAt).toLocaleString();
         console.log(
-          `  ${chalk.dim(when.padEnd(22))}${chalk.cyan(e.action.padEnd(32))}${chalk.dim(e.actor)}`
+          `  ${padEnd(chalk.dim(when), 22)}${padEnd(chalk.cyan(e.action), 32)}${chalk.dim(e.actor)}`
         );
       }
 

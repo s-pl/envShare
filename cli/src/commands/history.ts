@@ -2,6 +2,7 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 import { api, ApiError } from '../api.js';
 import { readProjectLink } from '../config.js';
+import { padEnd } from '../utils/ansiPad.js';
 
 interface VersionView {
   version: number;
@@ -52,7 +53,7 @@ export const historyCommand = new Command('history')
         const actionColor = v.action === 'created' ? chalk.green : v.action === 'deleted' ? chalk.red : chalk.yellow;
         const type = v.isShared ? chalk.blue('shared') : chalk.dim('personal');
         console.log(
-          `  v${String(v.version).padEnd(5)}${actionColor(v.action).padEnd(20)}${type.padEnd(20)}${chalk.dim(actor.padEnd(32))}${chalk.dim(when)}`
+          `  v${String(v.version).padEnd(5)}${padEnd(actionColor(v.action), 12)}${padEnd(type, 12)}${chalk.dim(actor.padEnd(32))}${chalk.dim(when)}`
         );
       }
       console.log();

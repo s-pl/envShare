@@ -18,7 +18,7 @@ export interface ProjectLink {
 
 export const config = new Conf<CliConfig>({
   projectName: 'envshare',
-  defaults: { apiUrl: 'http://localhost:3000', refreshToken: '', userId: '', email: '', installedAssetDate: '' },
+  defaults: { apiUrl: 'http://localhost:3001', refreshToken: '', userId: '', email: '', installedAssetDate: '' },
 });
 
 let _accessToken: string | null = null;
