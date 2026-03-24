@@ -10,12 +10,18 @@ import { parseDotenv } from '../utils/parseDotenv.js';
 
 export { parseDotenv };
 
-const ENV_FILE_RE = /^\.env(\..+)?$/;
+/**
+ * Matches .env and .env.<environment> (single word: local, production, staging, etc.)
+ * Does NOT match .env.template, .env.example, .env.test.bad, etc.
+ */
+const ENV_FILE_RE = /^\.env(\.[a-zA-Z0-9_-]+)?$/;
+const ENV_EXCLUDE = new Set(['.env.example', '.env.template', '.env.sample', '.env.bak', '.env.backup']);
+
 const SKIP_DIRS = new Set([
   'node_modules', '.git', 'dist', 'build', '.cache', 'coverage',
   'tmp', '.next', 'out', '.venv', 'venv', '__pycache__', '.idea',
   '.vscode', 'vendor', '.terraform', '.docker', '.turbo', '.nuxt',
-  '.output', '.svelte-kit', 'target', 'bin', 'obj',
+  '.output', '.svelte-kit', 'target', 'bin', 'obj', 'docker',
 ]);
 
 /**
@@ -41,7 +47,7 @@ export function findEnvFiles(root: string): string[] {
       // Never follow symlinks — they caused duplication
       if (lst.isSymbolicLink()) continue;
 
-      if (lst.isFile() && ENV_FILE_RE.test(name) && name !== '.env.example') {
+      if (lst.isFile() && ENV_FILE_RE.test(name) && !ENV_EXCLUDE.has(name)) {
         // Deduplicate by real path (handles hardlinks, bind mounts, etc.)
         const real = safeRealpath(abs);
         if (real && !seenRealPaths.has(real)) {
