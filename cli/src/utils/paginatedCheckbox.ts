@@ -100,11 +100,14 @@ export async function paginatedCheckbox(
     let inputBuf = '';
     let flushTimer: ReturnType<typeof setTimeout> | null = null;
 
+    const sigHandler = () => cleanup(null);
+
     const cleanup = (result: string[] | null) => {
       if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
       try { stdin.setRawMode(false); } catch { /* ignore */ }
       stdin.pause();
       stdin.removeListener('data', onData);
+      process.removeListener('SIGTERM', sigHandler);
       write(SHOW_CURSOR);
 
       write(MOVE_UP(renderedLines + 1));
@@ -200,5 +203,6 @@ export async function paginatedCheckbox(
     }
     stdin.resume();
     stdin.on('data', onData);
+    process.once('SIGTERM', sigHandler);
   });
 }

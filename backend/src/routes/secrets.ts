@@ -8,8 +8,14 @@ import { AppError } from '../middleware/errorHandler';
 export const secretsRouter = Router();
 secretsRouter.use(authenticate);
 
-/** Look up a secret and verify the caller is a project member. */
-async function requireSecretAccess(secretId: string, userId: string) {
+const ROLE_WEIGHT: Record<string, number> = { VIEWER: 0, DEVELOPER: 1, ADMIN: 2 };
+
+/** Look up a secret and verify the caller is a project member with at least `minRole`. */
+async function requireSecretAccess(
+  secretId: string,
+  userId: string,
+  minRole: 'VIEWER' | 'DEVELOPER' | 'ADMIN' = 'VIEWER',
+) {
   const secret = await prisma.secret.findUnique({
     where: { id: secretId },
     select: { projectId: true },
@@ -20,6 +26,10 @@ async function requireSecretAccess(secretId: string, userId: string) {
     where: { projectId_userId: { projectId: secret.projectId, userId } },
   });
   if (!member) throw new AppError(403, 'Access denied', 'FORBIDDEN');
+
+  if (ROLE_WEIGHT[member.role] < ROLE_WEIGHT[minRole]) {
+    throw new AppError(403, `Requires ${minRole} role or higher`, 'FORBIDDEN_ROLE');
+  }
 
   return secret;
 }
@@ -49,7 +59,7 @@ secretsRouter.get('/:secretId/history', async (req: AuthRequest, res, next) => {
 // PATCH /api/v1/secrets/:secretId/value
 secretsRouter.patch('/:secretId/value', async (req: AuthRequest, res, next) => {
   try {
-    await requireSecretAccess(req.params.secretId, req.user!.id);
+    await requireSecretAccess(req.params.secretId, req.user!.id, 'DEVELOPER');
     const { value } = z.object({ value: z.string() }).parse(req.body);
     await secretsService.setPersonalValue(req.params.secretId, value, req.user!.id);
     res.json({ ok: true });
@@ -59,7 +69,7 @@ secretsRouter.patch('/:secretId/value', async (req: AuthRequest, res, next) => {
 // PATCH /api/v1/secrets/:secretId/shared
 secretsRouter.patch('/:secretId/shared', async (req: AuthRequest, res, next) => {
   try {
-    await requireSecretAccess(req.params.secretId, req.user!.id);
+    await requireSecretAccess(req.params.secretId, req.user!.id, 'DEVELOPER');
     const { value } = z.object({ value: z.string() }).parse(req.body);
     await secretsService.setSharedValue(req.params.secretId, value, req.user!.id);
     res.json({ ok: true });
@@ -69,7 +79,7 @@ secretsRouter.patch('/:secretId/shared', async (req: AuthRequest, res, next) => 
 // DELETE /api/v1/secrets/:secretId
 secretsRouter.delete('/:secretId', async (req: AuthRequest, res, next) => {
   try {
-    await requireSecretAccess(req.params.secretId, req.user!.id);
+    await requireSecretAccess(req.params.secretId, req.user!.id, 'ADMIN');
     await secretsService.delete(req.params.secretId, req.user!.id);
     res.json({ ok: true });
   } catch (err) { next(err); }

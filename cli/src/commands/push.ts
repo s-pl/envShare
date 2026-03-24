@@ -1,45 +1,42 @@
 import { Command } from 'commander';
-import { readFileSync, existsSync, readdirSync, statSync } from 'fs';
+import { readFileSync, existsSync, readdirSync, statSync, lstatSync, realpathSync } from 'fs';
 import { join, relative } from 'path';
 import chalk from 'chalk';
 import { paginatedCheckbox } from '../utils/paginatedCheckbox.js';
 import { paginatedSelect } from '../utils/paginatedSelect.js';
 import { api, ApiError } from '../api.js';
 import { readProjectLink, readPushConfig, isAutoShared, isIgnored } from '../config.js';
+import { parseDotenv } from '../utils/parseDotenv.js';
 
-export function parseDotenv(content: string): { key: string; value: string; isShared: boolean }[] {
-  const entries: { key: string; value: string; isShared: boolean }[] = [];
-  for (const raw of content.split('\n')) {
-    const line = raw.trim();
-    if (!line || line.startsWith('#')) continue;
-    const eqIdx = line.indexOf('=');
-    if (eqIdx === -1) continue;
-    const key = line.slice(0, eqIdx).trim();
-    const rest = line.slice(eqIdx + 1);
-    const sharedMatch = rest.match(/#\s*@shared/i);
-    const isShared = sharedMatch !== null;
-    let value = isShared ? rest.slice(0, sharedMatch!.index).trim() : rest.trim();
-    if ((value.startsWith('"') && value.endsWith('"')) ||
-        (value.startsWith("'") && value.endsWith("'"))) {
-      value = value.slice(1, -1);
-    }
-    if (key) entries.push({ key, value, isShared });
-  }
-  return entries;
-}
+export { parseDotenv };
 
-function findEnvFiles(dir: string, root: string, depth = 0): string[] {
-  if (depth > 6) return [];
+const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'build', '.cache', 'coverage', 'tmp', '.next', 'out']);
+
+function findEnvFiles(dir: string, root: string, depth = 0, visited = new Set<string>()): string[] {
+  if (depth > 4) return [];
+
+  // Resolve real path to detect symlink loops
+  let realDir: string;
+  try { realDir = realpathSync(dir); } catch { return []; }
+  if (visited.has(realDir)) return [];
+  visited.add(realDir);
+
   const results: string[] = [];
   let entries: string[];
   try { entries = readdirSync(dir); } catch { return []; }
+
   for (const name of entries) {
-    if (name === 'node_modules' || name === '.git' || name === 'dist' || name === 'build') continue;
+    if (SKIP_DIRS.has(name)) continue;
     const abs = join(dir, name);
-    let stat;
-    try { stat = statSync(abs); } catch { continue; }
-    if (stat.isDirectory()) results.push(...findEnvFiles(abs, root, depth + 1));
-    else if (name === '.env') results.push(relative(root, abs));
+    let lst;
+    try { lst = lstatSync(abs); } catch { continue; }
+
+    if (lst.isSymbolicLink()) continue; // never follow symlinks
+    if (lst.isDirectory()) {
+      results.push(...findEnvFiles(abs, root, depth + 1, visited));
+    } else if (lst.isFile() && /^\.env(\..+)?$/.test(name) && name !== '.env.example') {
+      results.push(relative(root, abs));
+    }
   }
   return results;
 }
@@ -163,7 +160,10 @@ export const pushCommand = new Command('push')
         process.stdout.write(`  ${fp}  (${entries.length} vars)\n`);
         try {
           const t = await pushWithProgress(fp, link.projectId, entries, opts.env);
-          const parts = [`+${t.created} new`, `${t.updated} updated`].filter(Boolean);
+          const parts: string[] = [];
+          if (t.created) parts.push(`+${t.created} new`);
+          if (t.updated) parts.push(`${t.updated} updated`);
+          if (t.shared)  parts.push(`${t.shared} shared`);
           console.log(chalk.green(`  ✔ ${fp}`) + chalk.dim(`  —  ${parts.join(', ')}`));
           pushed++;
         } catch (err) {

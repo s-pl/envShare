@@ -5,6 +5,10 @@ import cookieParser from "cookie-parser";
 import compression from "compression";
 import morgan from "morgan";
 import rateLimit from "express-rate-limit";
+import { readFileSync } from "fs";
+import { join } from "path";
+
+const pkg = JSON.parse(readFileSync(join(__dirname, '..', 'package.json'), 'utf-8')) as { version: string };
 
 import { authRouter } from "./routes/auth";
 import { projectsRouter } from "./routes/projects";
@@ -180,7 +184,7 @@ app.use("/api/v1/audit", auditRouter);
 app.get("/health", (_req, res) => {
   res.json({
     status: "ok",
-    version: "1.0.0",
+    version: pkg.version,
     timestamp: new Date().toISOString(),
   });
 });
@@ -246,12 +250,32 @@ async function runRetentionJob() {
 }
 
 // ─── Server startup ───────────────────────────────────────────────────────────
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   logger.info(`envShare backend running on port ${PORT}`);
 
   // Run the retention job on startup (catches any backlog), then daily
   runRetentionJob();
   setInterval(runRetentionJob, 24 * 60 * 60 * 1000);
 });
+
+// ─── Graceful shutdown ────────────────────────────────────────────────────────
+async function shutdown(signal: string): Promise<void> {
+  logger.info(`Received ${signal}, shutting down gracefully...`);
+  server.close(async () => {
+    try {
+      await prisma.$disconnect();
+    } finally {
+      process.exit(0);
+    }
+  });
+  // Force exit after 10 seconds if connections don't drain
+  setTimeout(() => {
+    logger.error('Forced exit after 10s shutdown timeout');
+    process.exit(1);
+  }, 10_000).unref();
+}
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT',  () => shutdown('SIGINT'));
 
 export default app;

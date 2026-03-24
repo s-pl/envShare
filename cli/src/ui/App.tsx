@@ -113,8 +113,7 @@ function tabs(active: Tab) {
     <Box gap={1} marginBottom={1}>
       {all.map(t => (
         <Text key={t} bold={t === active}
-          color={t === active ? 'blue' : 'gray'}
-          backgroundColor={t === active ? undefined : undefined}>
+          color={t === active ? 'blue' : 'gray'}>
           {t === active ? `[${t}]` : ` ${t} `}
         </Text>
       ))}
@@ -137,6 +136,7 @@ function SecretsTab({ project, onActiveInput }: { project: Project; onActiveInpu
   const [filterMode, setFM]     = useState(false);
   const [editing, setEditing]   = useState<{ id: string; val: string; mode: 'personal' | 'shared' } | null>(null);
   const [status, setStatus]     = useState('');
+  const [pendingDelete, setPendingDelete] = useState<string | null>(null);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -183,7 +183,18 @@ function SecretsTab({ project, onActiveInput }: { project: Project; onActiveInpu
     }
     if (input === 's') { setEditing({ id: s.id, val: '', mode: 'personal' }); }
     if (input === 'S') { setEditing({ id: s.id, val: s.value, mode: 'shared' }); }
-    if (input === 'd') { deleteSecret(s); }
+    if (input === 'd') {
+      if (pendingDelete === s.id) {
+        deleteSecret(s);
+        setPendingDelete(null);
+      } else {
+        setPendingDelete(s.id);
+        setStatus(`⚠ Press [d] again to delete ${s.key}`);
+      }
+      return;
+    }
+    // Any other key cancels pending delete
+    if (pendingDelete) { setPendingDelete(null); setStatus(''); }
     if (input === 'R') { load(); }
   });
 
@@ -311,6 +322,7 @@ function PushTab({ project }: { project: Project }) {
   const [pushCfg]              = useState(() => readPushConfig());
   const [files, setFiles]      = useState<string[]>([]);
   const [fileCursor, setFC]    = useState(0);
+  const [selectedFile, setSelectedFile] = useState<string>('');
   const [entries, setEntries]  = useState<PushEntry[] | null>(null);
   const [entryCursor, setEC]   = useState(0);
   const [pushing, setPushing]  = useState(false);
@@ -335,6 +347,7 @@ function PushTab({ project }: { project: Project }) {
       ...e,
       isShared: e.isShared || isAutoShared(e.key, pushCfg),
     }));
+    setSelectedFile(fname);
     setEntries(enriched);
     setEC(0);
     setResult(null);
@@ -374,7 +387,7 @@ function PushTab({ project }: { project: Project }) {
     try {
       const { result } = await api.post<{ result: PushResult }>(
         `/sync/${project.id}/push`,
-        { secrets: entries },
+        { secrets: entries, filePath: selectedFile },
       );
       setResult(result);
     } catch (e: any) {
@@ -475,6 +488,10 @@ function ConfigTab() {
   const [adding, setAdding]   = useState<ConfigSection | null>(null);
   const [inputVal, setInputVal] = useState('');
   const [saved, setSaved]     = useState(false);
+  const savedTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Reset cursor when switching sections to avoid out-of-bounds on shorter lists
+  useEffect(() => { setLC(0); }, [section]);
 
   const sections: ConfigSection[] = ['defaultFile', 'sharedKeys', 'sharedPatterns', 'ignoredKeys'];
   const sectionIdx = sections.indexOf(section);
@@ -498,7 +515,8 @@ function ConfigTab() {
     if (input === 's') {
       writePushConfig(cfg);
       setSaved(true);
-      setTimeout(() => setSaved(false), 2000);
+      if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
+      savedTimerRef.current = setTimeout(() => setSaved(false), 2000);
     }
   });
 

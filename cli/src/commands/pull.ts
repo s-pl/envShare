@@ -5,7 +5,7 @@
  */
 import { Command } from 'commander';
 import { writeFileSync, mkdirSync } from 'fs';
-import { join, dirname } from 'path';
+import { join, dirname, resolve, sep } from 'path';
 import chalk from 'chalk';
 import { api, ApiError } from '../api.js';
 import { readProjectLink } from '../config.js';
@@ -68,7 +68,12 @@ export const pullCommand = new Command('pull')
       if (opts.output) {
         // Legacy / single-file mode: write everything to --output
         const content = buildEnvFile(secrets, link.projectName);
-        const outputPath = join(process.cwd(), opts.output);
+        const outputPath = resolve(process.cwd(), opts.output);
+        const cwd = process.cwd();
+        if (!outputPath.startsWith(cwd + sep) && outputPath !== cwd) {
+          console.error(chalk.red(`  Refusing to write outside project directory: ${opts.output}`));
+          process.exit(1);
+        }
         writeFileSync(outputPath, content, { mode: 0o600 });
         console.log(chalk.green(`  ✔ Wrote ${secrets.length} variables to ${opts.output}`));
       } else {
@@ -80,10 +85,15 @@ export const pullCommand = new Command('pull')
           groups.get(fp)!.push(s);
         }
 
+        const cwd = process.cwd();
         let totalWritten = 0;
         for (const [filePath, group] of groups) {
+          const absPath = resolve(cwd, filePath);
+          if (!absPath.startsWith(cwd + sep) && absPath !== cwd) {
+            console.error(chalk.red(`  Refusing to write outside project directory: ${filePath}`));
+            continue;
+          }
           const content = buildEnvFile(group, link.projectName);
-          const absPath = join(process.cwd(), filePath);
           mkdirSync(dirname(absPath), { recursive: true });
           writeFileSync(absPath, content, { mode: 0o600 });
           console.log(chalk.green(`  ✔ ${filePath}`) + chalk.dim(` (${group.length} variables)`));
