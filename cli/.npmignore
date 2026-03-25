@@ -1,0 +1,16 @@
+src/
+src/__tests__/
+*.test.ts
+*.spec.ts
+vitest.config.ts
+tsconfig.json
+build.mjs
+pkg-entry.cjs
+coverage/
+.cache/
+
+# Binary artifacts (published separately via GitHub Releases)
+envshare-linux-x64
+envshare-macos-x64
+envshare-macos-arm64
+envshare-windows-x64.exe

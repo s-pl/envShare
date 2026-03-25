@@ -1,7 +1,15 @@
 {
-  "name": "envshare",
+  "name": "@s-pl/envshare",
   "version": "1.0.7",
   "description": "envShare CLI — sync secrets to .env files",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/s-pl/envShare.git"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com",
+    "access": "restricted"
+  },
   "bin": {
     "envshare": "dist/index.js"
   },

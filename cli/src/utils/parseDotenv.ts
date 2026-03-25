@@ -64,9 +64,9 @@ export function parseDotenv(content: string): DotenvEntry[] {
       // Unquoted — strip inline comment, detect @shared
       const sharedMatch = rest.match(/#\s*@shared/i);
       isShared = sharedMatch !== null;
-      const commentIdx = sharedMatch ? rest.indexOf('#') : rest.indexOf('#');
-      // For unquoted, everything before the first # is the value
-      value = (commentIdx !== -1 ? rest.slice(0, commentIdx) : rest).trim();
+      const commentIdx = rest.indexOf('#');
+      // For unquoted, everything before the first # is the value; strip \r for Windows CRLF
+      value = (commentIdx !== -1 ? rest.slice(0, commentIdx) : rest).trim().replace(/\r$/, '');
     }
 
     entries.push({ key, value, isShared });
@@ -75,9 +75,11 @@ export function parseDotenv(content: string): DotenvEntry[] {
   return entries;
 }
 
-/** Returns true if the string has a closing double-quote that is not escaped. */
+/** Returns true if the string has a closing quote (matching q) that is not escaped. */
 function isClosingQuote(s: string, q: string): boolean {
-  return findClosingDoubleQuote(s) !== -1;
+  if (q === '"') return findClosingDoubleQuote(s) !== -1;
+  // Single-quoted: closing quote is the first unescaped q after index 0
+  return s.indexOf(q) !== -1;
 }
 
 /** Finds the index of the first unescaped closing double-quote. */

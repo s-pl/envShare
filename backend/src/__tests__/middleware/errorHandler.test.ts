@@ -50,6 +50,17 @@ describe('errorHandler', () => {
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ code: 'DB_CONSTRAINT' }));
   });
 
+  it('maps Prisma P2003 to 409/DB_CONSTRAINT', () => {
+    const res = makeRes();
+    const err = new Prisma.PrismaClientKnownRequestError('Foreign key', {
+      code: 'P2003',
+      clientVersion: '5',
+    });
+    errorHandler(err, req, res, next);
+    expect(res.status).toHaveBeenCalledWith(409);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ code: 'DB_CONSTRAINT' }));
+  });
+
   it('maps Prisma P2025 to 404/DB_NOT_FOUND', () => {
     const res = makeRes();
     const err = new Prisma.PrismaClientKnownRequestError('Not found', {

@@ -35,8 +35,8 @@ projectsRouter.get('/', async (req: AuthRequest, res, next) => {
 projectsRouter.post('/', async (req: AuthRequest, res, next) => {
   try {
     const body = z.object({
-      name: z.string().min(2),
-      slug: z.string().min(2).regex(/^[a-z0-9-]+$/),
+      name: z.string().min(2).max(100),
+      slug: z.string().min(2).max(100).regex(/^[a-z0-9-]+$/),
     }).parse(req.body);
 
     const projectKey = generateKey();
