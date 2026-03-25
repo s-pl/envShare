@@ -52,7 +52,7 @@ export function findEnvFiles(root: string): string[] {
         const real = safeRealpath(abs);
         if (real && !seenRealPaths.has(real)) {
           seenRealPaths.add(real);
-          results.push(relative(root, abs));
+          results.push(relative(root, abs).replace(/\\/g, '/'));
         }
       } else if (lst.isDirectory() && !SKIP_DIRS.has(name) && !name.startsWith('.')) {
         walk(abs, depth + 1);
