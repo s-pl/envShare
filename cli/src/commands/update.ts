@@ -18,6 +18,7 @@ function getAssetName(): string {
 
 async function fetchJson<T>(url: string): Promise<T> {
   const res = await fetch(url, {
+    signal: AbortSignal.timeout(15_000),
     headers: { 'User-Agent': 'envshare-cli', 'Accept': 'application/vnd.github.v3+json' },
   });
   if (!res.ok) throw new Error(`GitHub API error: ${res.status} ${res.statusText}`);
@@ -25,7 +26,10 @@ async function fetchJson<T>(url: string): Promise<T> {
 }
 
 async function downloadBinary(url: string, dest: string): Promise<void> {
-  const res = await fetch(url, { headers: { 'User-Agent': 'envshare-cli' } });
+  const res = await fetch(url, {
+    signal: AbortSignal.timeout(120_000),
+    headers: { 'User-Agent': 'envshare-cli' },
+  });
   if (!res.ok) throw new Error(`Download failed: ${res.status} ${res.statusText}`);
   const buf = await res.arrayBuffer();
   writeFileSync(dest, Buffer.from(buf));

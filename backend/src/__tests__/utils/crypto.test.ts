@@ -114,7 +114,15 @@ describe('getMasterKey', () => {
   it('throws when env var has wrong length', () => {
     const original = process.env.MASTER_ENCRYPTION_KEY;
     process.env.MASTER_ENCRYPTION_KEY = 'tooshort';
-    expect(() => getMasterKey()).toThrow('64 hex characters');
+    expect(() => getMasterKey()).toThrow('64-character hex string');
+    process.env.MASTER_ENCRYPTION_KEY = original;
+  });
+
+  it('throws when env var contains non-hex characters', () => {
+    const original = process.env.MASTER_ENCRYPTION_KEY;
+    // 64 chars but contains z (not hex)
+    process.env.MASTER_ENCRYPTION_KEY = 'z'.repeat(64);
+    expect(() => getMasterKey()).toThrow('64-character hex string');
     process.env.MASTER_ENCRYPTION_KEY = original;
   });
 });

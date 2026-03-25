@@ -64,9 +64,22 @@ export const syncService = {
           // Sync environmentId and isShared if they changed
           const patch: Record<string, unknown> = {};
           if (environmentId && !secret.environmentId) patch.environmentId = environmentId;
-          if (secret.isShared !== isShared) patch.isShared = isShared;
+          const isSharedFlipped = secret.isShared !== isShared;
+          if (isSharedFlipped) patch.isShared = isShared;
           if (Object.keys(patch).length) {
-            await prisma.secret.update({ where: { id: secret.id }, data: patch });
+            await tx.secret.update({ where: { id: secret.id }, data: patch });
+          }
+          // Record isShared change in history so the UI shows a "visibility changed" entry
+          if (isSharedFlipped) {
+            await tx.secretVersion.create({
+              data: {
+                secretId: secret.id,
+                userId,
+                action: isShared ? 'made_shared' : 'made_personal',
+                isShared,
+                version: secret.version,
+              },
+            });
           }
           result.updated.push(key);
         }

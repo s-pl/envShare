@@ -43,6 +43,8 @@ export const environmentService = {
 
     if (!normName)     throw new AppError(400, "Environment name is required",      "VALIDATION_ERROR");
     if (!normPath)     throw new AppError(400, "File path is required",              "VALIDATION_ERROR");
+    if (normPath.split('/').some(seg => seg === '..'))
+      throw new AppError(400, "File path must not contain '..' segments",            "VALIDATION_ERROR");
     if (normName.length > 64)
       throw new AppError(400, "Environment name must be 64 characters or fewer",   "VALIDATION_ERROR");
 

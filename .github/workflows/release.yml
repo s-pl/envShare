@@ -55,6 +55,10 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "tag=v$VERSION"    >> $GITHUB_OUTPUT
 
+      - name: Run tests
+        working-directory: cli
+        run: npm test
+
       - name: Bundle (esbuild → ESM + CJS for pkg)
         working-directory: cli
         env:

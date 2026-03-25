@@ -115,6 +115,7 @@ export function hashKey(keyName: string, projectKeyHex: string): string {
 export function getMasterKey(): string {
   const key = process.env.MASTER_ENCRYPTION_KEY;
   if (!key) throw new Error('MASTER_ENCRYPTION_KEY environment variable is not set');
-  if (key.length !== 64) throw new Error('MASTER_ENCRYPTION_KEY must be 64 hex characters (32 bytes)');
+  if (key.length !== 64 || !/^[0-9a-fA-F]{64}$/.test(key))
+    throw new Error('MASTER_ENCRYPTION_KEY must be a 64-character hex string');
   return key;
 }
