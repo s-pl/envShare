@@ -6,6 +6,7 @@ Welcome to the envShare documentation.
 
 | Page | Description |
 |------|-------------|
+| [User Guide](User-Guide) | How to use envShare as ADMIN, DEVELOPER, or VIEWER — roles, permissions, common workflows |
 | [Error Reference](Error-Reference) | Complete list of all error codes with HTTP status, causes and fixes |
 | [Auth Errors](Auth-Errors) | Registration, login, tokens, account lockout |
 | [Permission Errors](Permission-Errors) | Project roles, RBAC, forbidden operations |
