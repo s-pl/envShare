@@ -4,6 +4,7 @@ import { readFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { config, getApiUrl, isAuthenticated, readProjectLink } from '../config.js';
+import { printBanner, printInfoBox } from '../utils/brand.js';
 
 /** In dev: reads package.json. In a pkg binary: uses the build-time constant injected by esbuild. */
 function getCliVersion(): { version: string; description: string } {
@@ -25,45 +26,25 @@ export const versionCommand = new Command('version')
   .alias('v')
   .description('Show detailed version and environment information')
   .action(() => {
-    const { version, description } = getCliVersion();
-    const line = chalk.dim('─'.repeat(48));
+    const { version } = getCliVersion();
 
-    console.log();
-    console.log(`  ${chalk.bold.blue('envshare')}  ${chalk.bold(version)}`);
-    console.log(`  ${chalk.dim(description)}`);
-    console.log(`  ${line}`);
+    printBanner();
 
-    // Runtime
-    console.log(`  ${chalk.dim('node')}       ${process.version}`);
-    console.log(`  ${chalk.dim('platform')}   ${process.platform}/${process.arch}`);
-
-    // Config
     const apiUrl = getApiUrl();
-    console.log(`  ${chalk.dim('api url')}    ${chalk.cyan(apiUrl)}`);
-
-    // Auth state
     const loggedIn = isAuthenticated();
-    const email    = config.get('email') as string | undefined;
-    const userId   = config.get('userId') as string | undefined;
-
-    if (loggedIn && email) {
-      console.log(`  ${chalk.dim('logged in')}  ${chalk.green(email)}`);
-      if (userId) console.log(`  ${chalk.dim('user id')}    ${chalk.dim(userId)}`);
-    } else {
-      console.log(`  ${chalk.dim('logged in')}  ${chalk.yellow('no')}`);
-    }
-
-    // Linked project
+    const email = config.get('email') as string | undefined;
     const link = readProjectLink();
-    if (link) {
-      console.log(`  ${chalk.dim('project')}    ${chalk.magenta(link.projectName)} ${chalk.dim(`(${link.projectId})`)}`);
-    } else {
-      console.log(`  ${chalk.dim('project')}    ${chalk.dim('(not linked)')}`);
-    }
 
-    // Config file location
-    const cfgPath = config.path as string;
-    console.log(`  ${chalk.dim('config')}     ${chalk.dim(cfgPath)}`);
+    const rows: [string, string][] = [
+      ['version', chalk.bold(version)],
+      ['node', process.version],
+      ['platform', `${process.platform}/${process.arch}`],
+      ['api url', chalk.cyan(apiUrl)],
+      ['logged in', loggedIn && email ? chalk.green(email) : chalk.yellow('no')],
+      ['project', link ? chalk.magenta(link.projectName) : chalk.dim('(not linked)')],
+      ['config', chalk.dim(config.path as string)],
+    ];
 
+    printInfoBox(rows);
     console.log();
   });

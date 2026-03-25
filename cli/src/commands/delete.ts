@@ -1,8 +1,10 @@
 import { Command } from 'commander';
 import chalk from 'chalk';
+import ora from 'ora';
 import prompts from 'prompts';
 import { api, ApiError } from '../api.js';
 import { readProjectLink } from '../config.js';
+import { successLine, failLine } from '../utils/brand.js';
 
 export const deleteCommand = new Command('delete')
   .description('Delete a secret from the project (removes all personal values too)')
@@ -36,8 +38,10 @@ export const deleteCommand = new Command('delete')
         if (!confirmed) { console.log(chalk.dim('  Aborted.')); process.exit(0); }
       }
 
+      const spinner = ora({ text: `Deleting ${key}...`, indent: 2 }).start();
       await api.delete(`/secrets/${secret.id}`);
-      console.log(chalk.green(`  Deleted: ${key}`));
+      spinner.stop();
+      successLine(`Deleted ${chalk.bold(key)}`);
     } catch (err) {
       if (err instanceof ApiError) { console.error(chalk.red(`  Error: ${err.message}`)); process.exit(1); }
       throw err;

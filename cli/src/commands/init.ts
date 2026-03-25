@@ -1,23 +1,29 @@
 import { Command } from 'commander';
 import chalk from 'chalk';
+import ora from 'ora';
 import { writeFileSync } from 'fs';
 import { join } from 'path';
 import { api, ApiError } from '../api.js';
 import { paginatedSelect } from '../utils/paginatedSelect.js';
+import { sectionHeader, successLine } from '../utils/brand.js';
 
 export const initCommand = new Command('init')
   .description('Link current directory to a project')
   .action(async () => {
-    console.log(chalk.bold('\n  Link project to current directory\n'));
+    sectionHeader('Link project');
+
+    const spinner = ora({ text: 'Loading projects...', indent: 2 }).start();
 
     try {
       const { projects } = await api.get<{ projects: any[] }>('/projects');
+      spinner.stop();
 
       if (!projects.length) {
         console.log(chalk.yellow('  No projects found. Run `envshare project create` first.'));
         process.exit(1);
       }
 
+      console.log();
       const projectId = await paginatedSelect(
         'Select project',
         projects.map(p => ({ title: p.name, value: p.id })),
@@ -31,9 +37,11 @@ export const initCommand = new Command('init')
         JSON.stringify({ projectId, projectName: project.name }, null, 2),
       );
 
-      console.log(chalk.green(`\n  Linked to ${project.name}`));
+      console.log();
+      successLine(`Linked to ${chalk.bold(project.name)}`);
       console.log(chalk.dim('  Run `envshare push` to upload your .env\n'));
     } catch (err) {
+      spinner.stop();
       if (err instanceof ApiError) { console.error(chalk.red(`  Error: ${err.message}`)); process.exit(1); }
       throw err;
     }

@@ -4,7 +4,9 @@ import { join, dirname } from 'path';
 import { platform, arch } from 'os';
 import { spawn } from 'child_process';
 import chalk from 'chalk';
+import ora from 'ora';
 import { config } from '../config.js';
+import { sectionHeader, successLine, failLine } from '../utils/brand.js';
 
 const IS_WINDOWS = platform() === 'win32';
 
@@ -45,13 +47,15 @@ export const updateCommand = new Command('update')
         : 'OWNER/envShare';
 
     // ── 1. Fetch latest release from GitHub ───────────────────────────────────
-    process.stdout.write('  Checking for updates…  ');
+    sectionHeader('Update');
+    const spinner = ora({ text: 'Checking for updates...', indent: 2 }).start();
     let release: any;
     try {
       release = await fetchJson(`https://api.github.com/repos/${GITHUB_REPO}/releases/latest`);
+      spinner.stop();
     } catch (err: any) {
-      console.log(chalk.red('failed'));
-      console.error(chalk.red(`  ${err.message}`));
+      spinner.stop();
+      failLine(err.message);
       process.exit(1);
     }
 
@@ -91,10 +95,11 @@ export const updateCommand = new Command('update')
       }
     }
 
-    console.log(chalk.dim(`${latestTag}  (published ${new Date(remoteAssetDate).toLocaleDateString()})`));
+    console.log(chalk.dim(`  ${latestTag}  (published ${new Date(remoteAssetDate).toLocaleDateString()})`));
 
     if (!isOutdated) {
-      console.log(chalk.green('  Already up to date.\n'));
+      successLine('Already up to date.');
+      console.log();
       return;
     }
 
@@ -110,13 +115,14 @@ export const updateCommand = new Command('update')
     const installDir  = dirname(currentExe);
     const tmpPath     = join(installDir, 'envshare-update.tmp');
 
-    process.stdout.write(`  Downloading ${assetName}…  `);
+    const dlSpinner = ora({ text: `Downloading ${assetName}...`, indent: 2 }).start();
     try {
       await downloadBinary(asset.browser_download_url, tmpPath);
-      console.log(chalk.green('done'));
+      dlSpinner.stop();
+      successLine(`Downloaded ${assetName}`);
     } catch (err: any) {
-      console.log(chalk.red('failed'));
-      console.error(chalk.red(`  ${err.message}`));
+      dlSpinner.stop();
+      failLine(err.message);
       if (existsSync(tmpPath)) unlinkSync(tmpPath);
       process.exit(1);
     }
@@ -138,13 +144,15 @@ export const updateCommand = new Command('update')
       );
       spawn('cmd.exe', ['/c', batchPath], { detached: true, stdio: 'ignore' }).unref();
       config.set('installedAssetDate', remoteAssetDate);
-      console.log(chalk.green(`  Updated to ${latestTag}. Will take effect when you open a new terminal.\n`));
+      successLine(`Updated to ${chalk.bold(latestTag)}. Will take effect when you open a new terminal.`);
+      console.log();
     } else {
       try {
         renameSync(tmpPath, currentExe);
         chmodSync(currentExe, 0o755);
         config.set('installedAssetDate', remoteAssetDate);
-        console.log(chalk.green(`  Updated to ${latestTag}.\n`));
+        successLine(`Updated to ${chalk.bold(latestTag)}.`);
+        console.log();
       } catch (err: any) {
         if (existsSync(tmpPath)) unlinkSync(tmpPath);
         console.error(chalk.red(`  Failed to replace binary: ${err.message}`));

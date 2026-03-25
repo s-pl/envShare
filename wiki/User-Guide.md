@@ -9,7 +9,7 @@ envShare uses three roles to control what each team member can do within a proje
 | Role | Typical user | What they can do |
 |------|-------------|-----------------|
 | **ADMIN** | Tech lead, project owner | Full control — manage members, environments, and secrets |
-| **DEVELOPER** | Backend / fullstack engineer | Push and pull secrets, update values, create environments |
+| **DEVELOPER** | Backend / fullstack engineer | Push and pull secrets, update values |
 | **VIEWER** | Designer, QA, stakeholder | Read-only access — pull secrets to their local `.env` |
 
 Roles are **per-project**. A user can be ADMIN on one project and VIEWER on another.
@@ -48,67 +48,70 @@ Roles are **per-project**. A user can be ADMIN on one project and VIEWER on anot
 After creating a project you are automatically its ADMIN.
 
 ```bash
-# 1. Link the CLI to this project (run once per machine)
+# 1. Create a project (interactive — asks for name and slug)
+envshare project create
+
+# 2. Link the CLI to this project (run once per machine)
 envshare init
 
-# 2. Push your local .env to the server
+# 3. Push your local .env to the server
 envshare push
 
-# 3. Add team members
-envshare members add alice@company.com --role DEVELOPER
-envshare members add bob@company.com   --role VIEWER
+# 4. Invite team members
+envshare project invite alice@company.com --role DEVELOPER
+envshare project invite bob@company.com   --role VIEWER
 ```
 
 ### Managing members
 
 ```bash
 # List all members and their roles
-envshare members list
+envshare project members
 
-# Add a new member (default role: DEVELOPER)
-envshare members add carol@company.com
+# Invite a new member (default role: DEVELOPER)
+envshare project invite carol@company.com
 
 # Promote a VIEWER to DEVELOPER
-envshare members role carol@company.com DEVELOPER
+envshare project set-role carol@company.com DEVELOPER
 
 # Demote a DEVELOPER to VIEWER
-envshare members role alice@company.com VIEWER
+envshare project set-role alice@company.com VIEWER
 
-# Remove a member
-envshare members remove bob@company.com
+# Remove a member from the project
+envshare project remove bob@company.com
 ```
 
 > You cannot remove the last ADMIN or change your own role. Promote another member to ADMIN first.
 
 ### Managing environments
 
-Each environment maps to a file path (e.g. `staging` → `.env.staging`).
+Environments are created automatically when you push with `--env`. Each environment maps to a file path (e.g. `staging` → `.env.staging`).
 
 ```bash
-# List environments in this project
-envshare envs list
-
-# Create a staging environment
-envshare envs create staging --file .env.staging
-
-# Delete an environment (secrets linked to it are unlinked, not deleted)
-envshare envs delete staging
+# Push secrets to a staging environment (creates the environment if it doesn't exist)
+envshare push .env.staging --env staging
 ```
 
 ### Managing secrets
 
 ```bash
-# Push all secrets from .env
+# Push all secrets from .env (non-interactive — pushes everything)
+envshare push --all
+
+# Push interactively — choose which variables to push
 envshare push
 
-# Push only selected secrets (interactive selector)
-envshare push --select
+# Push a specific .env file to a specific environment
+envshare push .env.staging --env staging
 
-# Push secrets from a specific file to a specific environment
-envshare push --file .env.staging --env staging
+# Preview what would be pushed without sending
+envshare push --dry-run
 
 # Delete a specific secret (ADMIN only)
 envshare delete DATABASE_URL
+
+# Delete without confirmation prompt
+envshare delete DATABASE_URL --force
 
 # View the full change history of a secret
 envshare history DATABASE_URL
@@ -118,10 +121,19 @@ envshare history DATABASE_URL
 
 ```bash
 # View the project audit trail (last 50 events)
-envshare audit --project <projectId>
+envshare audit
+
+# Show more entries
+envshare audit --limit 100
 
 # Filter by date range
-envshare audit --project <projectId> --from 2026-03-01 --to 2026-03-31
+envshare audit --from 2026-03-01 --to 2026-03-31
+
+# Filter by action type
+envshare audit --action SECRETS_PUSHED
+
+# Machine-readable output
+envshare audit --json
 ```
 
 ---
@@ -156,19 +168,16 @@ envshare set DATABASE_URL "postgres://localhost/myapp_dev"
 Shared secrets have **one value for the whole team** (e.g. an API key for a third-party service). Any DEVELOPER can update it:
 
 ```bash
-envshare set STRIPE_PUBLIC_KEY "pk_test_..."
+envshare set STRIPE_PUBLIC_KEY "pk_test_..." --shared
 ```
 
 > Updating a shared value immediately affects every teammate who runs `envshare pull` next.
 
-### Creating an environment
+### Pushing to a specific environment
 
 ```bash
-# Add a new environment (e.g. for a staging server)
-envshare envs create staging --file .env.staging
-
-# Push secrets to that environment
-envshare push --file .env.staging --env staging
+# Push secrets from .env.staging and tag them as "staging"
+envshare push .env.staging --env staging
 ```
 
 ### Viewing history
@@ -246,13 +255,14 @@ SENTRY_DSN=https://abc@sentry.io/1 # @shared
 
 ### Onboarding a new developer
 
-1. **(ADMIN)** Add the developer to the project:
+1. **(ADMIN)** Invite the developer to the project:
    ```bash
-   envshare members add newdev@company.com --role DEVELOPER
+   envshare project invite newdev@company.com --role DEVELOPER
    ```
 2. **(New developer)** Register a CLI account and link the project:
    ```bash
    envshare register
+   envshare login
    envshare init
    ```
 3. **(New developer)** Pull secrets:
@@ -268,15 +278,15 @@ SENTRY_DSN=https://abc@sentry.io/1 # @shared
 
 ### Rotating a shared secret
 
-1. Update the value locally in your `.env`:
-   ```
-   STRIPE_SECRET_KEY=sk_live_new_key   # @shared
-   ```
-2. Push it:
+1. Update the value directly:
    ```bash
-   envshare push --select   # select only STRIPE_SECRET_KEY
+   envshare set STRIPE_SECRET_KEY "sk_live_new_key" --shared
    ```
-3. Notify teammates to pull:
+   Or update it in your `.env` with the `# @shared` annotation and push:
+   ```bash
+   envshare push
+   ```
+2. Notify teammates to pull:
    ```bash
    envshare pull
    ```
@@ -286,10 +296,11 @@ SENTRY_DSN=https://abc@sentry.io/1 # @shared
 ### Giving QA read-only access
 
 ```bash
-# ADMIN adds the QA engineer as VIEWER
-envshare members add qa@company.com --role VIEWER
+# ADMIN invites the QA engineer as VIEWER
+envshare project invite qa@company.com --role VIEWER
 
-# QA engineer pulls the staging environment
+# QA engineer sets up their environment
+envshare login
 envshare init
 envshare pull --env staging
 ```
@@ -298,28 +309,55 @@ envshare pull --env staging
 
 ### Checking who changed a secret
 
-Only ADMINs can browse the full project audit log:
-
-```bash
-envshare audit --project <projectId>
-```
-
-Any user can check their own activity:
+ADMINs can browse the full project audit log:
 
 ```bash
 envshare audit
+envshare audit --from 2026-03-01 --action SECRETS_PUSHED
+```
+
+Any role can view the history of a specific secret:
+
+```bash
+envshare history DATABASE_URL
 ```
 
 ---
 
-## Error quick-reference
+## Interactive terminal UI
 
-| Error code | Meaning | Who can fix it |
-|------------|---------|----------------|
-| `FORBIDDEN_ROLE` | Your role is too low for this action | ADMIN must promote you |
-| `LAST_ADMIN` | Cannot remove the only ADMIN | Promote someone else first |
-| `SELF_ROLE_CHANGE` | Cannot change your own role | Ask another ADMIN |
-| `MEMBER_ALREADY_EXISTS` | User is already a member | No action needed |
-| `SECRET_IS_SHARED` | Tried to set personal value on a shared secret | Use `envshare set KEY` without `# @shared` annotation |
+For a richer experience, launch the interactive terminal UI:
 
-See [Permission-Errors.md](Permission-Errors.md) for the full list.
+```bash
+envshare ui
+```
+
+The TUI lets you browse projects, secrets, members, and environments using keyboard navigation. Requires an interactive terminal (not CI).
+
+---
+
+## CLI command reference
+
+| Command | Description |
+|---------|-------------|
+| `envshare register` | Create a new account |
+| `envshare login` | Authenticate with the server |
+| `envshare url [url]` | Get or set the API server URL |
+| `envshare project create` | Create a new project |
+| `envshare project invite <email>` | Invite a member (`--role ADMIN\|DEVELOPER\|VIEWER`) |
+| `envshare project members` | List project members |
+| `envshare project set-role <email> <role>` | Change a member's role |
+| `envshare project remove <email>` | Remove a member |
+| `envshare init` | Link current directory to a project |
+| `envshare push [file]` | Push `.env` variables (`--all`, `--env`, `--dry-run`) |
+| `envshare pull` | Pull secrets to `.env` files (`--output`, `--env`) |
+| `envshare set <key> <value>` | Set a personal value (`--shared` for shared) |
+| `envshare list` | List secret keys (`--json`) |
+| `envshare delete <key>` | Delete a secret (`--force`) |
+| `envshare history <key>` | Show version history for a secret |
+| `envshare audit` | Show audit log (`--limit`, `--from`, `--to`, `--action`, `--json`) |
+| `envshare ui` | Launch interactive terminal UI |
+| `envshare update` | Download latest release (`--check`) |
+| `envshare version` | Show version and environment info |
+
+See [Permission-Errors.md](Permission-Errors.md) for the full error reference.
