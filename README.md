@@ -76,25 +76,27 @@ ENVSHARE_DOMAIN=secrets.yourdomain.com docker compose -f docker-compose.https.ym
 
 The CLI is a standalone binary — no Node.js required on developer machines.
 
+**macOS / Linux (Homebrew)**
+
 ```bash
-# macOS (Apple Silicon)
-curl -fsSL https://github.com/s-pl/envShare/releases/latest/download/envshare-macos-arm64 \
-  -o ~/.local/bin/envshare && chmod +x ~/.local/bin/envshare
-
-# macOS (Intel)
-curl -fsSL https://github.com/s-pl/envShare/releases/latest/download/envshare-macos-x64 \
-  -o ~/.local/bin/envshare && chmod +x ~/.local/bin/envshare
-
-# Linux
-curl -fsSL https://github.com/s-pl/envShare/releases/latest/download/envshare-linux-x64 \
-  -o ~/.local/bin/envshare && chmod +x ~/.local/bin/envshare
-
-# Windows (PowerShell)
-Invoke-WebRequest https://github.com/s-pl/envShare/releases/latest/download/envshare-windows-x64.exe `
-  -OutFile "$env:LOCALAPPDATA\Microsoft\WindowsApps\envshare.exe"
+brew install s-pl/envshare/envshare
 ```
 
-Or use the self-updater once it's installed:
+**Windows (Scoop)**
+
+```powershell
+scoop bucket add envshare https://github.com/s-pl/scoop-envshare
+scoop install envshare
+```
+
+**Linux (manual)**
+
+```bash
+sudo curl -fsSL https://github.com/s-pl/envShare/releases/latest/download/envshare-linux-x64 \
+  -o /usr/local/bin/envshare && sudo chmod +x /usr/local/bin/envshare
+```
+
+Once installed, keep it up to date with:
 
 ```bash
 envshare update

@@ -145,24 +145,116 @@ jobs:
             | macOS Apple Silicon | `envshare-macos-arm64` |
             | Linux x64 | `envshare-linux-x64` |
 
-            ### Quick install
+            ### Install
 
+            **macOS / Linux (Homebrew)**
             ```bash
-            # macOS Apple Silicon
-            curl -L https://github.com/${{ github.repository }}/releases/download/${{ steps.meta.outputs.tag }}/envshare-macos-arm64 -o ~/.local/bin/envshare
-            chmod +x ~/.local/bin/envshare
-
-            # macOS Intel
-            curl -L https://github.com/${{ github.repository }}/releases/download/${{ steps.meta.outputs.tag }}/envshare-macos-x64 -o ~/.local/bin/envshare
-            chmod +x ~/.local/bin/envshare
-
-            # Linux
-            curl -L https://github.com/${{ github.repository }}/releases/download/${{ steps.meta.outputs.tag }}/envshare-linux-x64 -o ~/.local/bin/envshare
-            chmod +x ~/.local/bin/envshare
+            brew install s-pl/envshare/envshare
             ```
 
-            Or use the self-installer (once installed):
+            **Windows (Scoop)**
+            ```powershell
+            scoop bucket add envshare https://github.com/s-pl/scoop-envshare
+            scoop install envshare
+            ```
+
+            **Linux (manual)**
             ```bash
-            envshare update
+            sudo curl -fsSL https://github.com/${{ github.repository }}/releases/download/${{ steps.meta.outputs.tag }}/envshare-linux-x64 \
+              -o /usr/local/bin/envshare && sudo chmod +x /usr/local/bin/envshare
             ```
           files: artifacts/*
+
+      # ── Compute SHA256 hashes (needed for Homebrew) ─────────────────────────
+      - name: Compute SHA256 hashes
+        id: sha
+        run: |
+          echo "arm64=$(sha256sum artifacts/envshare-macos-arm64    | awk '{print $1}')" >> $GITHUB_OUTPUT
+          echo "x64=$(sha256sum   artifacts/envshare-macos-x64      | awk '{print $1}')" >> $GITHUB_OUTPUT
+          echo "win=$(sha256sum   artifacts/envshare-windows-x64.exe | awk '{print $1}')" >> $GITHUB_OUTPUT
+          echo "linux=$(sha256sum artifacts/envshare-linux-x64       | awk '{print $1}')" >> $GITHUB_OUTPUT
+
+      # ── Update Homebrew tap ──────────────────────────────────────────────────
+      - name: Update Homebrew tap
+        env:
+          TAP_TOKEN: ${{ secrets.TAP_TOKEN }}
+          VERSION: ${{ steps.meta.outputs.version }}
+          SHA_ARM64: ${{ steps.sha.outputs.arm64 }}
+          SHA_X64: ${{ steps.sha.outputs.x64 }}
+          SHA_LINUX: ${{ steps.sha.outputs.linux }}
+        run: |
+          git clone https://x-access-token:${TAP_TOKEN}@github.com/s-pl/homebrew-envshare.git tap
+          mkdir -p tap/Formula
+          cat > tap/Formula/envshare.rb <<FORMULA
+          class Envshare < Formula
+            desc "CLI for envShare — self-hosted secrets management for development teams"
+            homepage "https://github.com/s-pl/envShare"
+            version "${VERSION}"
+            license "MIT"
+
+            on_macos do
+              on_arm do
+                url "https://github.com/s-pl/envShare/releases/download/v${VERSION}/envshare-macos-arm64"
+                sha256 "${SHA_ARM64}"
+              end
+              on_intel do
+                url "https://github.com/s-pl/envShare/releases/download/v${VERSION}/envshare-macos-x64"
+                sha256 "${SHA_X64}"
+              end
+            end
+
+            on_linux do
+              url "https://github.com/s-pl/envShare/releases/download/v${VERSION}/envshare-linux-x64"
+              sha256 "${SHA_LINUX}"
+            end
+
+            def install
+              if OS.mac?
+                bin.install (Hardware::CPU.arm? ? "envshare-macos-arm64" : "envshare-macos-x64") => "envshare"
+              else
+                bin.install "envshare-linux-x64" => "envshare"
+              end
+            end
+
+            test do
+              assert_match version.to_s, shell_output("#{bin}/envshare version 2>&1")
+            end
+          end
+          FORMULA
+          cd tap
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name  "github-actions[bot]"
+          git add Formula/envshare.rb
+          git diff --cached --quiet || git commit -m "envshare ${VERSION}"
+          git push
+
+      # ── Update Scoop bucket ──────────────────────────────────────────────────
+      - name: Update Scoop bucket
+        env:
+          TAP_TOKEN: ${{ secrets.TAP_TOKEN }}
+          VERSION: ${{ steps.meta.outputs.version }}
+          SHA_WIN: ${{ steps.sha.outputs.win }}
+        run: |
+          git clone https://x-access-token:${TAP_TOKEN}@github.com/s-pl/scoop-envshare.git scoop
+          mkdir -p scoop/bucket
+          cat > scoop/bucket/envshare.json <<JSON
+          {
+            "version": "${VERSION}",
+            "description": "CLI for envShare — self-hosted secrets management for development teams",
+            "homepage": "https://github.com/s-pl/envShare",
+            "license": "MIT",
+            "architecture": {
+              "64bit": {
+                "url": "https://github.com/s-pl/envShare/releases/download/v${VERSION}/envshare-windows-x64.exe",
+                "hash": "${SHA_WIN}"
+              }
+            },
+            "bin": [["envshare-windows-x64.exe", "envshare"]]
+          }
+          JSON
+          cd scoop
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name  "github-actions[bot]"
+          git add bucket/envshare.json
+          git diff --cached --quiet || git commit -m "envshare ${VERSION}"
+          git push
