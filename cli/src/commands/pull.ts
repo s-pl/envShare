@@ -7,8 +7,10 @@ import { Command } from 'commander';
 import { writeFileSync, mkdirSync } from 'fs';
 import { join, dirname, resolve, sep } from 'path';
 import chalk from 'chalk';
+import ora from 'ora';
 import { api, ApiError } from '../api.js';
 import { readProjectLink } from '../config.js';
+import { sectionHeader, successLine } from '../utils/brand.js';
 
 interface PulledSecret {
   key: string;
@@ -52,7 +54,9 @@ export const pullCommand = new Command('pull')
       process.exit(1);
     }
 
-    process.stdout.write(`  Pulling secrets for ${link.projectName}...\n`);
+    sectionHeader(`Pull · ${link.projectName}`);
+
+    const spinner = ora({ text: 'Downloading secrets...', indent: 2 }).start();
 
     try {
       const pullUrl = opts.env
@@ -65,6 +69,8 @@ export const pullCommand = new Command('pull')
         secrets = secrets.filter(s => s.environmentName === opts.env);
       }
 
+      spinner.stop();
+
       if (opts.output) {
         // Legacy / single-file mode: write everything to --output
         const content = buildEnvFile(secrets, link.projectName);
@@ -75,7 +81,7 @@ export const pullCommand = new Command('pull')
           process.exit(1);
         }
         writeFileSync(outputPath, content, { mode: 0o600 });
-        console.log(chalk.green(`  ✔ Wrote ${secrets.length} variables to ${opts.output}`));
+        successLine(`Wrote ${chalk.bold(String(secrets.length))} variables to ${chalk.cyan(opts.output)}`);
       } else {
         // Multi-env mode: group by filePath and write each to the correct location
         const groups = new Map<string, PulledSecret[]>();
@@ -96,7 +102,7 @@ export const pullCommand = new Command('pull')
           const content = buildEnvFile(group, link.projectName);
           mkdirSync(dirname(absPath), { recursive: true });
           writeFileSync(absPath, content, { mode: 0o600 });
-          console.log(chalk.green(`  ✔ ${filePath}`) + chalk.dim(` (${group.length} variables)`));
+          successLine(`${chalk.cyan(filePath)}` + chalk.dim(` (${group.length} variables)`));
           totalWritten += group.length;
         }
         console.log(chalk.dim(`\n  Total: ${totalWritten} variables across ${groups.size} file${groups.size !== 1 ? 's' : ''}`));
@@ -110,6 +116,7 @@ export const pullCommand = new Command('pull')
 
       console.log();
     } catch (err) {
+      spinner.stop();
       if (err instanceof ApiError) { console.error(chalk.red(`  Error: ${err.message}`)); }
       else throw err;
       process.exit(1);

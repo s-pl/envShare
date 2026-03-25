@@ -7,6 +7,7 @@ import { paginatedSelect } from '../utils/paginatedSelect.js';
 import { api, ApiError } from '../api.js';
 import { readProjectLink, readPushConfig, isAutoShared, isIgnored } from '../config.js';
 import { parseDotenv } from '../utils/parseDotenv.js';
+import { sectionHeader, successLine } from '../utils/brand.js';
 
 export { parseDotenv };
 
@@ -157,7 +158,7 @@ export const pushCommand = new Command('push')
       if (!filePaths.length) filePaths = [pushCfg.defaultFile];
     }
 
-    console.log(chalk.bold(`\n  Push to ${link.projectName}\n`));
+    sectionHeader(`Push · ${link.projectName}`);
 
     // ── Dry run ───────────────────────────────────────────────────────────────
     if (opts.dryRun) {
@@ -191,7 +192,7 @@ export const pushCommand = new Command('push')
           if (t.created) parts.push(`+${t.created} new`);
           if (t.updated) parts.push(`${t.updated} updated`);
           if (t.shared)  parts.push(`${t.shared} shared`);
-          console.log(chalk.green(`  ✔ ${fp}`) + chalk.dim(`  —  ${parts.join(', ')}`));
+          successLine(`${chalk.cyan(fp)}` + chalk.dim(`  —  ${parts.join(', ')}`));
           pushed++;
         } catch (err) {
           if (err instanceof ApiError) console.error(chalk.red(`  ✗ ${fp}: ${err.message}`));
@@ -241,7 +242,7 @@ export const pushCommand = new Command('push')
       if (t.created) parts.push(chalk.green(`+${t.created} new`));
       if (t.updated) parts.push(`${t.updated} updated`);
       if (t.shared)  parts.push(chalk.blue(`${t.shared} shared`));
-      console.log(chalk.green(`  ✔ Pushed ${selected.length} variables`) + (parts.length ? chalk.dim(`  —  `) + parts.join(chalk.dim(', ')) : ''));
+      successLine(`Pushed ${chalk.bold(String(selected.length))} variables` + (parts.length ? chalk.dim(`  —  `) + parts.join(chalk.dim(', ')) : ''));
     } catch (err) {
       if (err instanceof ApiError) console.error(chalk.red(`  ✗ ${err.message}`));
       else console.error(chalk.red('  ✗ Unexpected error'));
