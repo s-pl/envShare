@@ -40,7 +40,7 @@ Every value is encrypted with **AES-256-GCM**. The master encryption key never t
 | Provider | Notes |
 |----------|-------|
 | [![Launch on AWS](https://img.shields.io/badge/Deploy%20to-AWS%20CloudFormation-FF9900?style=for-the-badge&logo=amazon-aws&logoColor=white)](https://console.aws.amazon.com/cloudformation/home#/stacks/new?stackName=envShare&templateURL=https%3A%2F%2Fraw.githubusercontent.com%2Fs-pl%2FenvShare%2Fmain%2Fdeploy%2Fcloudformation.yml) | EC2 (Amazon Linux 2023) + Docker Compose. ~10 min. |
-| [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/template/envShare) | Managed containers + PostgreSQL add-on. |
+| [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/new/template?template=https://github.com/s-pl/envShare) | Managed containers + PostgreSQL add-on. |
 | [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/s-pl/envShare) | Managed API hosting + PostgreSQL add-on. |
 
 > The AWS template provisions a single EC2 instance. You will be prompted for `MASTER_ENCRYPTION_KEY`, `JWT_SECRET`, and `POSTGRES_PASSWORD` during stack creation. See [`deploy/cloudformation.yml`](deploy/cloudformation.yml) for the full template.
