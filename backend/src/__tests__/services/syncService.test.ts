@@ -6,10 +6,11 @@ vi.mock('../../utils/prisma', () => {
     secret: { findUnique: vi.fn(), create: vi.fn(), update: vi.fn() },
     secretVersion: { create: vi.fn() },
     auditLog: { create: vi.fn() },
+    userSecretValue: { upsert: vi.fn() },
   };
   return {
     prisma: {
-      $transaction: vi.fn(async (fn: (tx: typeof tx) => Promise<unknown>) => fn(tx)),
+      $transaction: vi.fn(async (fn: (client: typeof tx) => Promise<unknown>) => fn(tx)),
       secret: { findMany: vi.fn() },
       environment: { findMany: vi.fn() },
       _tx: tx,
@@ -49,7 +50,9 @@ beforeEach(() => {
 describe('syncService.push', () => {
   it('creates a new secret for an unknown key', async () => {
     tx.secret.findUnique.mockResolvedValue(null);
-    tx.secret.create.mockResolvedValue({ id: 's1' });
+    tx.secret.create.mockResolvedValue({ id: 's1', sharedEncryptedValue: null, version: 1, isShared: false });
+    tx.secret.update.mockResolvedValue({});
+    tx.userSecretValue.upsert.mockResolvedValue({});
     tx.secretVersion.create.mockResolvedValue({});
     tx.auditLog.create.mockResolvedValue({});
 
@@ -60,7 +63,8 @@ describe('syncService.push', () => {
   });
 
   it('updates result for existing secret', async () => {
-    tx.secret.findUnique.mockResolvedValue({ id: 's1', environmentId: null });
+    tx.secret.findUnique.mockResolvedValue({ id: 's1', environmentId: null, isShared: false, sharedEncryptedValue: null, version: 1 });
+    tx.userSecretValue.upsert.mockResolvedValue({});
     tx.auditLog.create.mockResolvedValue({});
 
     const result = await syncService.push('proj1', [{ key: 'OLD_KEY', value: 'val', isShared: false }], 'u1');
@@ -68,16 +72,25 @@ describe('syncService.push', () => {
     expect(result.created).toHaveLength(0);
   });
 
-  it('calls setSharedValue for shared entries', async () => {
-    tx.secret.findUnique.mockResolvedValue({ id: 's1', environmentId: null });
+  it('encrypts and stores shared values inline (no secretsService call)', async () => {
+    tx.secret.findUnique.mockResolvedValue({ id: 's1', environmentId: null, isShared: true, sharedEncryptedValue: 'old', version: 1 });
+    tx.secret.update.mockResolvedValue({});
+    tx.secretVersion.create.mockResolvedValue({});
     tx.auditLog.create.mockResolvedValue({});
 
     await syncService.push('proj1', [{ key: 'DB_URL', value: 'postgres://...', isShared: true }], 'u1');
-    expect(secretsService.setSharedValue).toHaveBeenCalledWith('s1', 'postgres://...', 'u1');
+
+    // Value is now stored inline via tx.secret.update, not via secretsService
+    expect(tx.secret.update).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 's1' }, data: expect.objectContaining({ isShared: true }) }),
+    );
+    expect(secretsService.setSharedValue).not.toHaveBeenCalled();
   });
 
   it('tracks shared updates in result.sharedUpdated', async () => {
-    tx.secret.findUnique.mockResolvedValue({ id: 's1', environmentId: null });
+    tx.secret.findUnique.mockResolvedValue({ id: 's1', environmentId: null, isShared: true, sharedEncryptedValue: 'old', version: 1 });
+    tx.secret.update.mockResolvedValue({});
+    tx.secretVersion.create.mockResolvedValue({});
     tx.auditLog.create.mockResolvedValue({});
 
     const result = await syncService.push('proj1', [{ key: 'DB_URL', value: 'val', isShared: true }], 'u1');
@@ -85,7 +98,8 @@ describe('syncService.push', () => {
   });
 
   it('creates audit log entry', async () => {
-    tx.secret.findUnique.mockResolvedValue({ id: 's1', environmentId: null });
+    tx.secret.findUnique.mockResolvedValue({ id: 's1', environmentId: null, isShared: false, sharedEncryptedValue: null, version: 1 });
+    tx.userSecretValue.upsert.mockResolvedValue({});
     tx.auditLog.create.mockResolvedValue({});
 
     await syncService.push('proj1', [{ key: 'KEY', value: 'v', isShared: false }], 'u1');
@@ -97,8 +111,9 @@ describe('syncService.push', () => {
   it('processes multiple entries', async () => {
     tx.secret.findUnique
       .mockResolvedValueOnce(null) // first key is new
-      .mockResolvedValueOnce({ id: 's2', environmentId: null }); // second key exists
-    tx.secret.create.mockResolvedValue({ id: 's1' });
+      .mockResolvedValueOnce({ id: 's2', environmentId: null, isShared: false, sharedEncryptedValue: null, version: 1 }); // second key exists
+    tx.secret.create.mockResolvedValue({ id: 's1', sharedEncryptedValue: null, version: 1, isShared: false });
+    tx.userSecretValue.upsert.mockResolvedValue({});
     tx.secretVersion.create.mockResolvedValue({});
     tx.auditLog.create.mockResolvedValue({});
 

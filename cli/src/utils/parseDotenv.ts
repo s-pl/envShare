@@ -16,6 +16,9 @@ export interface DotenvEntry {
  * - KEY=value  # @shared  (marks as shared)
  * - # inside quoted values is not treated as a comment
  */
+/** Maximum number of bytes allowed for a single .env value (prevents OOM on malformed files). */
+const MAX_VALUE_BYTES = 1024 * 1024; // 1 MB
+
 export function parseDotenv(content: string): DotenvEntry[] {
   const entries: DotenvEntry[] = [];
   const lines = content.split('\n');
@@ -46,6 +49,9 @@ export function parseDotenv(content: string): DotenvEntry[] {
       while (!isClosingQuote(raw, '"') && i < lines.length) {
         raw += '\n' + lines[i];
         i++;
+        if (Buffer.byteLength(raw, 'utf8') > MAX_VALUE_BYTES) {
+          throw new Error(`Value for key "${key}" exceeds the maximum allowed size of 1 MB`);
+        }
       }
       // Strip trailing closing quote and anything after it
       const closeIdx = findClosingDoubleQuote(raw);

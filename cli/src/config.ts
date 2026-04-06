@@ -60,11 +60,33 @@ const DEFAULT_PUSH_CONFIG: PushConfig = {
   ignoredKeys: [],
 };
 
+function isStringArray(v: unknown): v is string[] {
+  return Array.isArray(v) && v.every(item => typeof item === 'string');
+}
+
+function validatePushConfig(v: unknown): v is Partial<PushConfig> {
+  if (typeof v !== 'object' || v === null || Array.isArray(v)) return false;
+  const c = v as Record<string, unknown>;
+  if ('defaultFile' in c && typeof c.defaultFile !== 'string') return false;
+  if ('sharedKeys' in c && !isStringArray(c.sharedKeys)) return false;
+  if ('sharedPatterns' in c && !isStringArray(c.sharedPatterns)) return false;
+  if ('ignoredKeys' in c && !isStringArray(c.ignoredKeys)) return false;
+  return true;
+}
+
 export function readPushConfig(): PushConfig {
   const path = join(process.cwd(), '.envshare.config.json');
   if (!existsSync(path)) return { ...DEFAULT_PUSH_CONFIG };
-  try { return { ...DEFAULT_PUSH_CONFIG, ...JSON.parse(readFileSync(path, 'utf-8')) }; }
-  catch { return { ...DEFAULT_PUSH_CONFIG }; }
+  try {
+    const raw: unknown = JSON.parse(readFileSync(path, 'utf-8'));
+    if (!validatePushConfig(raw)) {
+      process.stderr.write('Warning: .envshare.config.json has invalid fields — falling back to defaults\n');
+      return { ...DEFAULT_PUSH_CONFIG };
+    }
+    return { ...DEFAULT_PUSH_CONFIG, ...raw };
+  } catch {
+    return { ...DEFAULT_PUSH_CONFIG };
+  }
 }
 
 export function writePushConfig(cfg: PushConfig): void {

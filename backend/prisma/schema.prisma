@@ -133,6 +133,7 @@ model Secret {
   @@unique([projectId, keyHash])
   @@index([projectId])
   @@index([environmentId])
+  @@index([projectId, environmentId]) // composite — accelerates pull queries that filter by both
 }
 
 // Per-user personal value for a secret
