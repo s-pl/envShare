@@ -9,6 +9,7 @@ import { prisma } from '../utils/prisma';
 import { encrypt, hashKey } from '../utils/crypto';
 import { getProjectKey } from '../utils/projectKey';
 import { secretsService } from './secretsService';
+import { environmentService } from './environmentService';
 
 export interface PushEntry {
   key: string;
@@ -31,6 +32,11 @@ export const syncService = {
   ): Promise<PushResult> {
     const projectKey = await getProjectKey(projectId);
 
+    // Every secret must belong to an environment. If none was provided, resolve
+    // (or create) the default production environment for this project.
+    const resolvedEnvId = environmentId
+      ?? await environmentService.getOrCreate(projectId, 'production', '.env');
+
     return prisma.$transaction(async (tx) => {
       const result: PushResult = { created: [], updated: [], sharedUpdated: [] };
 
@@ -38,7 +44,7 @@ export const syncService = {
         const kHash = hashKey(key, projectKey);
 
         let secret = await tx.secret.findUnique({
-          where: { projectId_keyHash: { projectId, keyHash: kHash } },
+          where: { projectId_keyHash_environmentId: { projectId, keyHash: kHash, environmentId: resolvedEnvId } },
         });
 
         const isNew = !secret;
@@ -53,16 +59,16 @@ export const syncService = {
               keyIV: encKey.iv,
               keyTag: encKey.tag,
               isShared,
-              environmentId: environmentId ?? null,
+              environmentId: resolvedEnvId,
               comment: isShared ? '🌐 Shared value' : undefined,
               version: 1,
             },
           });
           result.created.push(key);
         } else {
-          // Sync environmentId and isShared if they changed
+          // Only sync isShared changes — environmentId is now part of the key,
+          // so it never needs patching here.
           const patch: Record<string, unknown> = {};
-          if (environmentId !== undefined && environmentId !== secret.environmentId) patch.environmentId = environmentId;
           const isSharedFlipped = secret.isShared !== isShared;
           if (isSharedFlipped) patch.isShared = isShared;
           if (Object.keys(patch).length) {
@@ -170,15 +176,6 @@ export const syncService = {
   async pull(projectId: string, userId: string, envFilter?: string) {
     const secrets = await secretsService.listForUser(projectId, userId);
 
-    // Fetch environment filePaths for each secret
-    const secretEnvMap = await prisma.secret.findMany({
-      where: { projectId },
-      select: { id: true, environmentId: true },
-    });
-    const envIdBySecretId = new Map(
-      secretEnvMap.map((s: { id: string; environmentId: string | null }) => [s.id, s.environmentId]),
-    );
-
     const environments = await prisma.environment.findMany({
       where: { projectId },
       select: { id: true, filePath: true, name: true },
@@ -187,9 +184,18 @@ export const syncService = {
       environments.map((e: { id: string; filePath: string; name: string }) => [e.id, e]),
     );
 
+    // Fetch environmentId per secret (non-nullable after migration)
+    const secretEnvMap = await prisma.secret.findMany({
+      where: { projectId },
+      select: { id: true, environmentId: true },
+    });
+    const envIdBySecretId = new Map(
+      secretEnvMap.map((s: { id: string; environmentId: string }) => [s.id, s.environmentId]),
+    );
+
     const result = secrets.map(s => {
-      const envId = envIdBySecretId.get(s.id);
-      const env = envId ? envById.get(envId) : null;
+      const envId = envIdBySecretId.get(s.id)!;
+      const env = envById.get(envId);
       return {
         ...s,
         filePath: env?.filePath ?? '.env',
