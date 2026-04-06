@@ -24,6 +24,31 @@ import { requestContextMiddleware } from "./middleware/requestContext";
 import { logger } from "./utils/logger";
 import { prisma } from "./utils/prisma";
 
+// ─── Startup config validation ────────────────────────────────────────────────
+
+function validateConfig(): void {
+  const jwtSecret = process.env.JWT_SECRET;
+  if (!jwtSecret) throw new Error('JWT_SECRET is not set');
+  if (Buffer.from(jwtSecret).length < 32) {
+    throw new Error('JWT_SECRET must be at least 32 bytes long');
+  }
+  // MASTER_ENCRYPTION_KEY is validated lazily by getMasterKey() in crypto.ts
+  // but we validate it here too so misconfiguration surfaces immediately at startup
+  const masterKey = process.env.MASTER_ENCRYPTION_KEY;
+  if (!masterKey) throw new Error('MASTER_ENCRYPTION_KEY is not set');
+  if (!/^[0-9a-fA-F]{64}$/.test(masterKey)) {
+    throw new Error('MASTER_ENCRYPTION_KEY must be exactly 64 hex characters (32 bytes)');
+  }
+}
+
+try {
+  validateConfig();
+} catch (err) {
+  // Use console.error here — Winston may not be ready before config validation
+  console.error('[FATAL] Server misconfiguration:', (err as Error).message);
+  process.exit(1);
+}
+
 // ─── App ──────────────────────────────────────────────────────────────────────
 
 const app = express();
@@ -216,28 +241,28 @@ async function runRetentionJob() {
   try {
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() - AUDIT_LOG_RETENTION_DAYS);
+    const now = new Date();
 
-    // 1. Purge expired refresh tokens (they are useless but take up space
-    //    and constitute stored personal data — IP address, User-Agent).
-    if (TOKEN_CLEANUP_ENABLED) {
-      const { count: tokensDeleted } = await prisma.refreshToken.deleteMany({
-        where: { expiresAt: { lt: new Date() } },
-      });
-      if (tokensDeleted > 0) {
-        logger.info(`${label}: purged ${tokensDeleted} expired refresh tokens`);
-      }
+    // Both deletions run in a single interactive transaction so that a partial
+    // failure (e.g. token cleanup succeeds but log cleanup fails) leaves the
+    // database in a consistent state — either both commit or neither does.
+    const [tokensDeleted, logsDeleted] = await prisma.$transaction([
+      // 1. Purge expired refresh tokens (stored personal data — IP, User-Agent).
+      TOKEN_CLEANUP_ENABLED
+        ? prisma.refreshToken.deleteMany({ where: { expiresAt: { lt: now } } })
+        : prisma.refreshToken.deleteMany({ where: { id: 'never-matches-sentinel' } }),
+
+      // 2. Purge audit logs older than the retention window (GDPR Art.5(1)(e)).
+      //    IP addresses in those rows are personal data under GDPR Rec.30.
+      prisma.auditLog.deleteMany({ where: { createdAt: { lt: cutoff } } }),
+    ]);
+
+    if (TOKEN_CLEANUP_ENABLED && tokensDeleted.count > 0) {
+      logger.info(`${label}: purged ${tokensDeleted.count} expired refresh tokens`);
     }
-
-    // 2. Purge audit logs older than the retention window.
-    //    IP addresses embedded in those rows are personal data (GDPR Rec.30).
-    //    Deletion is the correct action once the security-monitoring window
-    //    has passed.
-    const { count: logsDeleted } = await prisma.auditLog.deleteMany({
-      where: { createdAt: { lt: cutoff } },
-    });
-    if (logsDeleted > 0) {
+    if (logsDeleted.count > 0) {
       logger.info(
-        `${label}: purged ${logsDeleted} audit log entries older than ` +
+        `${label}: purged ${logsDeleted.count} audit log entries older than ` +
           `${AUDIT_LOG_RETENTION_DAYS} days (GDPR Art.5(1)(e) storage limitation)`,
       );
     }

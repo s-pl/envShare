@@ -1,6 +1,6 @@
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import { randomBytes } from "crypto";
+import { randomBytes, createHash } from "crypto";
 import { prisma } from "../utils/prisma";
 import { AppError } from "../middleware/errorHandler";
 import { logger } from "../utils/logger";
@@ -20,6 +20,19 @@ const MAX_FAILED_ATTEMPTS = 10;
 const LOCKOUT_DURATION_MIN = 30;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/**
+ * One-way hash for refresh tokens stored in the database.
+ *
+ * Refresh tokens are long random values (40 bytes / 80 hex chars), so SHA-256
+ * is sufficient — no need for bcrypt's cost factor. This means a database
+ * breach exposes only hashes, not usable tokens.
+ *
+ * ISO 27001 A.9.4.3 — Password management system (extended to session tokens).
+ */
+function hashRefreshToken(token: string): string {
+  return createHash('sha256').update(token).digest('hex');
+}
 
 function signAccess(userId: string, email: string): string {
   const secret = process.env.JWT_SECRET;
@@ -196,7 +209,7 @@ export const authService = {
 
     await prisma.refreshToken.create({
       data: {
-        token: refreshToken,
+        token: hashRefreshToken(refreshToken),
         userId: user.id,
         expiresAt,
         ipAddress: session.ipAddress ?? null,
@@ -232,7 +245,7 @@ export const authService = {
    */
   async refresh(refreshToken: string, session: SessionMeta = {}) {
     const record = await prisma.refreshToken.findUnique({
-      where: { token: refreshToken },
+      where: { token: hashRefreshToken(refreshToken) },
       include: { user: true },
     });
 
@@ -254,7 +267,7 @@ export const authService = {
 
     await prisma.refreshToken.create({
       data: {
-        token: newRefresh,
+        token: hashRefreshToken(newRefresh),
         userId: record.userId,
         expiresAt,
         ipAddress: session.ipAddress ?? null,
@@ -279,7 +292,7 @@ export const authService = {
    * Invalidate a single refresh token (normal sign-out).
    */
   async logout(refreshToken: string): Promise<void> {
-    await prisma.refreshToken.deleteMany({ where: { token: refreshToken } });
+    await prisma.refreshToken.deleteMany({ where: { token: hashRefreshToken(refreshToken) } });
   },
 
   /**

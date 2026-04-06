@@ -166,8 +166,11 @@ describe('authService.logout', () => {
   it('deletes the refresh token', async () => {
     mockPrisma.refreshToken.deleteMany.mockResolvedValue({ count: 1 });
     await authService.logout('sometoken');
+    // logout hashes the token before querying the DB (ISO 27001 A.9.4.3)
+    const { createHash } = await import('crypto');
+    const expectedHash = createHash('sha256').update('sometoken').digest('hex');
     expect(mockPrisma.refreshToken.deleteMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { token: 'sometoken' } }),
+      expect.objectContaining({ where: { token: expectedHash } }),
     );
   });
 });

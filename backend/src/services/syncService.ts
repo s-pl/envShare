@@ -7,9 +7,8 @@
  */
 import { prisma } from '../utils/prisma';
 import { encrypt, hashKey } from '../utils/crypto';
-import { AppError } from '../middleware/errorHandler';
-import { secretsService } from './secretsService';
 import { getProjectKey } from '../utils/projectKey';
+import { secretsService } from './secretsService';
 
 export interface PushEntry {
   key: string;
@@ -84,11 +83,56 @@ export const syncService = {
           result.updated.push(key);
         }
 
+        // All value writes use `tx` so that newly created secrets (not yet
+        // committed) are visible. Calling secretsService here would use the
+        // global prisma client, which cannot see uncommitted rows in this tx.
+        const encVal = encrypt(value, projectKey);
+
         if (isShared) {
-          await secretsService.setSharedValue(secret.id, value, userId);
+          const isFirstValue = !secret.sharedEncryptedValue;
+          const newVersion = isNew ? 1 : (isFirstValue ? secret.version : secret.version + 1);
+
+          await tx.secret.update({
+            where: { id: secret.id },
+            data: {
+              isShared: true,
+              sharedEncryptedValue: encVal.encryptedData,
+              sharedValueIV: encVal.iv,
+              sharedValueTag: encVal.tag,
+              version: newVersion,
+            },
+          });
+
+          await tx.secretVersion.create({
+            data: {
+              secretId: secret.id,
+              userId,
+              action: isNew || isFirstValue ? 'created' : 'updated',
+              isShared: true,
+              sharedEncryptedValue: encVal.encryptedData,
+              sharedValueIV: encVal.iv,
+              sharedValueTag: encVal.tag,
+              version: newVersion,
+            },
+          });
+
           result.sharedUpdated.push(key);
         } else {
-          await secretsService.setPersonalValue(secret.id, value, userId);
+          await tx.userSecretValue.upsert({
+            where: { secretId_userId: { secretId: secret.id, userId } },
+            create: {
+              secretId: secret.id,
+              userId,
+              encryptedValue: encVal.encryptedData,
+              valueIV: encVal.iv,
+              valueTag: encVal.tag,
+            },
+            update: {
+              encryptedValue: encVal.encryptedData,
+              valueIV: encVal.iv,
+              valueTag: encVal.tag,
+            },
+          });
 
           if (isNew) {
             await tx.secretVersion.create({
@@ -131,13 +175,17 @@ export const syncService = {
       where: { projectId },
       select: { id: true, environmentId: true },
     });
-    const envIdBySecretId = new Map(secretEnvMap.map(s => [s.id, s.environmentId]));
+    const envIdBySecretId = new Map(
+      secretEnvMap.map((s: { id: string; environmentId: string | null }) => [s.id, s.environmentId]),
+    );
 
     const environments = await prisma.environment.findMany({
       where: { projectId },
       select: { id: true, filePath: true, name: true },
     });
-    const envById = new Map(environments.map(e => [e.id, e]));
+    const envById = new Map(
+      environments.map((e: { id: string; filePath: string; name: string }) => [e.id, e]),
+    );
 
     const result = secrets.map(s => {
       const envId = envIdBySecretId.get(s.id);

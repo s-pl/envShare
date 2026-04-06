@@ -12,5 +12,13 @@ export async function getProjectKey(projectId: string): Promise<string> {
     select: { encryptedKey: true },
   });
   if (!project) throw new AppError(404, 'Project not found', 'PROJECT_NOT_FOUND');
-  return unwrapKey(JSON.parse(project.encryptedKey), getMasterKey());
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(project.encryptedKey);
+  } catch {
+    throw new AppError(500, 'Project key is corrupted and cannot be decrypted', 'ENCRYPTION_FAILED');
+  }
+
+  return unwrapKey(parsed as Parameters<typeof unwrapKey>[0], getMasterKey());
 }
