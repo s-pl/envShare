@@ -7,7 +7,6 @@ import { Command } from 'commander';
 import { writeFileSync, mkdirSync } from 'fs';
 import { join, dirname, resolve, sep } from 'path';
 import chalk from 'chalk';
-import ora from 'ora';
 import { api, ApiError } from '../api.js';
 import { readProjectLink } from '../config.js';
 import { sectionHeader, successLine } from '../utils/brand.js';
@@ -56,7 +55,7 @@ export const pullCommand = new Command('pull')
 
     sectionHeader(`Pull · ${link.projectName}`);
 
-    const spinner = ora({ text: 'Downloading secrets...', indent: 2, discardStdin: false }).start();
+    process.stdout.write(chalk.dim('  Downloading secrets...\n'));
 
     try {
       const pullUrl = opts.env
@@ -68,8 +67,6 @@ export const pullCommand = new Command('pull')
       if (opts.env) {
         secrets = secrets.filter(s => s.environmentName === opts.env);
       }
-
-      spinner.stop();
 
       if (opts.output) {
         // Legacy / single-file mode: write everything to --output
@@ -116,7 +113,6 @@ export const pullCommand = new Command('pull')
 
       console.log();
     } catch (err) {
-      spinner.stop();
       if (err instanceof ApiError) { console.error(chalk.red(`  Error: ${err.message}`)); }
       else throw err;
       process.exit(1);

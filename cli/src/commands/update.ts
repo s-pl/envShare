@@ -4,7 +4,6 @@ import { join, dirname } from 'path';
 import { platform, arch } from 'os';
 import { spawn } from 'child_process';
 import chalk from 'chalk';
-import ora from 'ora';
 import { config } from '../config.js';
 import { sectionHeader, successLine, failLine } from '../utils/brand.js';
 
@@ -48,13 +47,11 @@ export const updateCommand = new Command('update')
 
     // ── 1. Fetch latest release from GitHub ───────────────────────────────────
     sectionHeader('Update');
-    const spinner = ora({ text: 'Checking for updates...', indent: 2, discardStdin: false }).start();
+    process.stdout.write(chalk.dim('  Checking for updates...\n'));
     let release: any;
     try {
       release = await fetchJson(`https://api.github.com/repos/${GITHUB_REPO}/releases/latest`);
-      spinner.stop();
     } catch (err: any) {
-      spinner.stop();
       failLine(err.message);
       process.exit(1);
     }
@@ -115,13 +112,11 @@ export const updateCommand = new Command('update')
     const installDir  = dirname(currentExe);
     const tmpPath     = join(installDir, 'envshare-update.tmp');
 
-    const dlSpinner = ora({ text: `Downloading ${assetName}...`, indent: 2, discardStdin: false }).start();
+    process.stdout.write(chalk.dim(`  Downloading ${assetName}...\n`));
     try {
       await downloadBinary(asset.browser_download_url, tmpPath);
-      dlSpinner.stop();
       successLine(`Downloaded ${assetName}`);
     } catch (err: any) {
-      dlSpinner.stop();
       failLine(err.message);
       if (existsSync(tmpPath)) unlinkSync(tmpPath);
       process.exit(1);

@@ -1,7 +1,6 @@
 import { Command } from 'commander';
-import { input } from '@inquirer/prompts';
-import { ExitPromptError } from '@inquirer/core';
 import chalk from 'chalk';
+import { input, restoreTerminal } from '../utils/prompt.js';
 import { api, ApiError } from '../api.js';
 
 export const orgsCommand = new Command('org').description('Manage organizations');
@@ -10,15 +9,10 @@ orgsCommand
   .command('create')
   .description('Create a new organization')
   .action(async () => {
-    let name: string, slug: string;
-    try {
-      name = await input({ message: 'Organization name' });
-      const defaultSlug = name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
-      slug = await input({ message: 'Slug (lowercase, no spaces)', default: defaultSlug });
-    } catch (err) {
-      if (err instanceof ExitPromptError) { process.exit(0); }
-      throw err;
-    }
+    const name = await input({ message: 'Organization name' });
+    const defaultSlug = name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+    const slug = await input({ message: 'Slug (lowercase, no spaces)', default: defaultSlug });
+    restoreTerminal();
 
     if (!name || !slug) { process.exit(0); }
 

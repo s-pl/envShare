@@ -62,7 +62,7 @@ export const syncService = {
         } else {
           // Sync environmentId and isShared if they changed
           const patch: Record<string, unknown> = {};
-          if (environmentId && !secret.environmentId) patch.environmentId = environmentId;
+          if (environmentId !== undefined && environmentId !== secret.environmentId) patch.environmentId = environmentId;
           const isSharedFlipped = secret.isShared !== isShared;
           if (isSharedFlipped) patch.isShared = isShared;
           if (Object.keys(patch).length) {
