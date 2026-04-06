@@ -1,5 +1,6 @@
 import { Command } from 'commander';
-import prompts from 'prompts';
+import { input } from '@inquirer/prompts';
+import { ExitPromptError } from '@inquirer/core';
 import chalk from 'chalk';
 import { api, ApiError } from '../api.js';
 
@@ -9,21 +10,20 @@ orgsCommand
   .command('create')
   .description('Create a new organization')
   .action(async () => {
-    const answers = await prompts([
-      { type: 'text', name: 'name', message: 'Organization name' },
-      {
-        type: 'text',
-        name: 'slug',
-        message: 'Slug (lowercase, no spaces)',
-        initial: (_prev: any, values: any) =>
-          values.name?.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, ''),
-      },
-    ]);
+    let name: string, slug: string;
+    try {
+      name = await input({ message: 'Organization name' });
+      const defaultSlug = name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+      slug = await input({ message: 'Slug (lowercase, no spaces)', default: defaultSlug });
+    } catch (err) {
+      if (err instanceof ExitPromptError) { process.exit(0); }
+      throw err;
+    }
 
-    if (!answers.name || !answers.slug) { process.exit(0); }
+    if (!name || !slug) { process.exit(0); }
 
     try {
-      const { organization } = await api.post<{ organization: any }>('/organizations', answers);
+      const { organization } = await api.post<{ organization: any }>('/organizations', { name, slug });
       console.log(chalk.green(`\n  Organization "${organization.name}" created (id: ${organization.id})\n`));
     } catch (err) {
       if (err instanceof ApiError) { console.error(chalk.red(`\n  Error: ${err.message}`)); process.exit(1); }

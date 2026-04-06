@@ -1,5 +1,6 @@
 import { Command } from 'commander';
-import prompts from 'prompts';
+import { input, password } from '@inquirer/prompts';
+import { ExitPromptError } from '@inquirer/core';
 import chalk from 'chalk';
 import ora from 'ora';
 import { config, setAccessToken, clearAuth, getApiUrl } from '../config.js';
@@ -15,13 +16,20 @@ export const loginCommand = new Command('login')
     sectionHeader('Login');
     console.log(chalk.dim(`  Server: ${getApiUrl()}\n`));
 
-    const answers = await prompts([
-      { type: 'text', name: 'email', message: 'Email' },
-      { type: 'password', name: 'password', message: 'Password' },
-    ]);
+    let email: string, pass: string;
+    try {
+      email = await input({ message: 'Email' });
+      pass  = await password({ message: 'Password', mask: '*' });
+    } catch (err) {
+      if (err instanceof ExitPromptError) {
+        console.log(chalk.yellow('\n  Aborted.'));
+        process.exit(0);
+      }
+      throw err;
+    }
 
-    if (!answers.email || !answers.password) {
-      console.log(chalk.yellow('Aborted.'));
+    if (!email || !pass) {
+      console.log(chalk.yellow('  Aborted.'));
       process.exit(0);
     }
 
@@ -33,7 +41,7 @@ export const loginCommand = new Command('login')
     try {
       const result = await api.post<{ accessToken: string; refreshToken: string; user: any }>(
         '/auth/login',
-        { email: answers.email, password: answers.password },
+        { email, password: pass },
       );
 
       setAccessToken(result.accessToken);

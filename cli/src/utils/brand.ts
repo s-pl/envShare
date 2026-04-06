@@ -40,7 +40,7 @@ const BOX = {
  * Draws a Unicode box around rows of [label, value] pairs.
  * Looks like:
  *   ╭──────────────────────────────────╮
- *   │  version   1.0.7                 │
+ *   │  version   2.0.0                 │
  *   │  node      v20.11.0              │
  *   ╰──────────────────────────────────╯
  */

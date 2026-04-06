@@ -1,5 +1,6 @@
 import { Command } from 'commander';
-import prompts from 'prompts';
+import { input, password } from '@inquirer/prompts';
+import { ExitPromptError } from '@inquirer/core';
 import chalk from 'chalk';
 import ora from 'ora';
 import { api, ApiError } from '../api.js';
@@ -15,18 +16,25 @@ export const registerCommand = new Command('register')
     sectionHeader('Create account');
     console.log();
 
-    const answers = await prompts([
-      { type: 'text',     name: 'name',     message: 'Full name' },
-      { type: 'text',     name: 'email',    message: 'Email' },
-      { type: 'password', name: 'password', message: 'Password (min 12 chars)' },
-    ]);
+    let name: string, email: string, pass: string;
+    try {
+      name  = await input({ message: 'Full name' });
+      email = await input({ message: 'Email' });
+      pass  = await password({ message: 'Password (min 12 chars)', mask: '*' });
+    } catch (err) {
+      if (err instanceof ExitPromptError) {
+        console.log(chalk.yellow('\n  Aborted.'));
+        process.exit(0);
+      }
+      throw err;
+    }
 
-    if (!answers.name || !answers.email || !answers.password) {
+    if (!name || !email || !pass) {
       console.log(chalk.yellow('  Aborted.'));
       process.exit(0);
     }
 
-    if (answers.password.length < 12) {
+    if (pass.length < 12) {
       failLine('Password must be at least 12 characters.');
       process.exit(1);
     }
@@ -35,9 +43,9 @@ export const registerCommand = new Command('register')
 
     try {
       const { user } = await api.post<{ user: any }>('/auth/register', {
-        name: answers.name,
-        email: answers.email,
-        password: answers.password,
+        name,
+        email,
+        password: pass,
       });
       spinner.stop();
       successLine(`Account created: ${chalk.bold(user.email)}`);

@@ -1,6 +1,6 @@
 {
   "name": "envsharesai-backend",
-  "version": "1.0.1",
+  "version": "2.0.0",
   "description": "envShare - Secrets Management Backend",
   "main": "dist/app.js",
   "scripts": {
