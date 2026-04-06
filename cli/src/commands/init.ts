@@ -12,7 +12,7 @@ export const initCommand = new Command('init')
   .action(async () => {
     sectionHeader('Link project');
 
-    const spinner = ora({ text: 'Loading projects...', indent: 2 }).start();
+    const spinner = ora({ text: 'Loading projects...', indent: 2, discardStdin: false }).start();
 
     try {
       const { projects } = await api.get<{ projects: any[] }>('/projects');

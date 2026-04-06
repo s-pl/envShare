@@ -43,7 +43,7 @@ export const deleteCommand = new Command('delete')
         if (!confirmed) { console.log(chalk.dim('  Aborted.')); process.exit(0); }
       }
 
-      const spinner = ora({ text: `Deleting ${key}...`, indent: 2 }).start();
+      const spinner = ora({ text: `Deleting ${key}...`, indent: 2, discardStdin: false }).start();
       await api.delete(`/secrets/${secret.id}`);
       spinner.stop();
       successLine(`Deleted ${chalk.bold(key)}`);
