@@ -1,5 +1,5 @@
 import { Command } from 'commander';
-import { input, password } from '@inquirer/prompts';
+import { input, password, confirm } from '@inquirer/prompts';
 import { ExitPromptError } from '@inquirer/core';
 import chalk from 'chalk';
 import ora from 'ora';
@@ -16,11 +16,15 @@ export const registerCommand = new Command('register')
     sectionHeader('Create account');
     console.log();
 
-    let name: string, email: string, pass: string;
+    let name: string, email: string, pass: string, consent: boolean;
     try {
-      name  = await input({ message: 'Full name' });
-      email = await input({ message: 'Email' });
-      pass  = await password({ message: 'Password (min 12 chars)', mask: '*' });
+      name    = await input({ message: 'Full name' });
+      email   = await input({ message: 'Email' });
+      pass    = await password({ message: 'Password (min 12 chars)', mask: '*' });
+      consent = await confirm({
+        message: `Accept the Privacy Policy? ${chalk.dim('(https://envshare.dev/privacy)')}`,
+        default: false,
+      });
     } catch (err) {
       if (err instanceof ExitPromptError) {
         console.log(chalk.yellow('\n  Aborted.'));
@@ -32,6 +36,11 @@ export const registerCommand = new Command('register')
     if (!name || !email || !pass) {
       console.log(chalk.yellow('  Aborted.'));
       process.exit(0);
+    }
+
+    if (!consent) {
+      failLine('You must accept the Privacy Policy to create an account.');
+      process.exit(1);
     }
 
     if (pass.length < 12) {
@@ -46,6 +55,7 @@ export const registerCommand = new Command('register')
         name,
         email,
         password: pass,
+        consent,
       });
       spinner.stop();
       successLine(`Account created: ${chalk.bold(user.email)}`);

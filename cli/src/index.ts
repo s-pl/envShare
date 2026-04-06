@@ -10,7 +10,6 @@ import { initCommand }     from './commands/init.js';
 import { pushCommand }     from './commands/push.js';
 import { pullCommand }     from './commands/pull.js';
 import { setCommand }      from './commands/set.js';
-import { uiCommand }       from './commands/ui.js';
 import { versionCommand }  from './commands/version.js';
 import { installCommand }  from './commands/install.js';
 import { updateCommand }   from './commands/update.js';
@@ -41,7 +40,6 @@ program.addCommand(listCommand);
 program.addCommand(deleteCommand);
 program.addCommand(historyCommand);
 program.addCommand(auditCommand);
-program.addCommand(uiCommand);
 
 void program.parseAsync(process.argv).catch((err: unknown) => {
   if (err instanceof ApiError) {
