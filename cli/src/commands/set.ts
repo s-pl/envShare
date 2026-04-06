@@ -4,7 +4,6 @@
  */
 import { Command } from 'commander';
 import chalk from 'chalk';
-import ora from 'ora';
 import { api, ApiError } from '../api.js';
 import { readProjectLink } from '../config.js';
 import { successLine } from '../utils/brand.js';
@@ -30,15 +29,13 @@ export const setCommand = new Command('set')
         process.exit(1);
       }
 
-      const spinner = ora({ text: opts.shared ? 'Updating shared value...' : 'Setting personal value...', indent: 2, discardStdin: false }).start();
-
       if (opts.shared) {
+        process.stdout.write(chalk.dim('  Updating shared value...\n'));
         await api.patch(`/secrets/${secret.id}/shared`, { value });
-        spinner.stop();
         successLine(`Shared value updated for ${chalk.bold(key)} ${chalk.dim('(all team members will see this)')}`);
       } else {
+        process.stdout.write(chalk.dim('  Setting personal value...\n'));
         await api.patch(`/secrets/${secret.id}/value`, { value });
-        spinner.stop();
         successLine(`Personal value set for ${chalk.bold(key)}`);
       }
     } catch (err) {

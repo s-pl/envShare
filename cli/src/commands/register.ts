@@ -1,8 +1,6 @@
 import { Command } from 'commander';
-import { input, password, confirm } from '@inquirer/prompts';
-import { ExitPromptError } from '@inquirer/core';
 import chalk from 'chalk';
-import ora from 'ora';
+import { input, password, confirm, restoreTerminal } from '../utils/prompt.js';
 import { api, ApiError } from '../api.js';
 import { config } from '../config.js';
 import { sectionHeader, successLine, failLine } from '../utils/brand.js';
@@ -16,22 +14,16 @@ export const registerCommand = new Command('register')
     sectionHeader('Create account');
     console.log();
 
-    let name: string, email: string, pass: string, consent: boolean;
-    try {
-      name    = await input({ message: 'Full name' });
-      email   = await input({ message: 'Email' });
-      pass    = await password({ message: 'Password (min 12 chars)', mask: '*' });
-      consent = await confirm({
-        message: `Accept the Privacy Policy? ${chalk.dim('(https://envshare.dev/privacy)')}`,
-        default: false,
-      });
-    } catch (err) {
-      if (err instanceof ExitPromptError) {
-        console.log(chalk.yellow('\n  Aborted.'));
-        process.exit(0);
-      }
-      throw err;
-    }
+    const name    = await input({ message: 'Full name' });
+    const email   = await input({ message: 'Email' });
+    const pass    = await password({ message: 'Password (min 12 chars)', mask: '*' });
+    const consent = await confirm({
+      message: `Accept the Privacy Policy? ${chalk.dim('(https://envshare.dev/privacy)')}`,
+      default: false,
+    });
+
+    // All prompts done — restore terminal before any process.exit or I/O
+    restoreTerminal();
 
     if (!name || !email || !pass) {
       console.log(chalk.yellow('  Aborted.'));
@@ -48,7 +40,7 @@ export const registerCommand = new Command('register')
       process.exit(1);
     }
 
-    const spinner = ora({ text: 'Creating account...', indent: 2, discardStdin: false }).start();
+    process.stdout.write(chalk.dim('  Creating account...\n'));
 
     try {
       const { user } = await api.post<{ user: any }>('/auth/register', {
@@ -57,11 +49,9 @@ export const registerCommand = new Command('register')
         password: pass,
         consent,
       });
-      spinner.stop();
       successLine(`Account created: ${chalk.bold(user.email)}`);
       console.log(chalk.dim('  Run `envshare login` to authenticate.\n'));
     } catch (err) {
-      spinner.stop();
       if (err instanceof ApiError) {
         failLine(err.message);
         process.exit(1);

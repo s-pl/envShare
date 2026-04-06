@@ -1,6 +1,5 @@
 import { Command } from 'commander';
 import chalk from 'chalk';
-import ora from 'ora';
 import { writeFileSync } from 'fs';
 import { join } from 'path';
 import { api, ApiError } from '../api.js';
@@ -12,11 +11,10 @@ export const initCommand = new Command('init')
   .action(async () => {
     sectionHeader('Link project');
 
-    const spinner = ora({ text: 'Loading projects...', indent: 2, discardStdin: false }).start();
+    process.stdout.write(chalk.dim('  Loading projects...\n'));
 
     try {
       const { projects } = await api.get<{ projects: any[] }>('/projects');
-      spinner.stop();
 
       if (!projects.length) {
         console.log(chalk.yellow('  No projects found. Run `envshare project create` first.'));
@@ -41,7 +39,6 @@ export const initCommand = new Command('init')
       successLine(`Linked to ${chalk.bold(project.name)}`);
       console.log(chalk.dim('  Run `envshare push` to upload your .env\n'));
     } catch (err) {
-      spinner.stop();
       if (err instanceof ApiError) { console.error(chalk.red(`  Error: ${err.message}`)); process.exit(1); }
       throw err;
     }

@@ -1,8 +1,6 @@
 import { Command } from 'commander';
-import { input, password } from '@inquirer/prompts';
-import { ExitPromptError } from '@inquirer/core';
 import chalk from 'chalk';
-import ora from 'ora';
+import { input, password, restoreTerminal } from '../utils/prompt.js';
 import { config, setAccessToken, clearAuth, getApiUrl } from '../config.js';
 import { api, ApiError } from '../api.js';
 import { sectionHeader, successLine, failLine } from '../utils/brand.js';
@@ -16,27 +14,20 @@ export const loginCommand = new Command('login')
     sectionHeader('Login');
     console.log(chalk.dim(`  Server: ${getApiUrl()}\n`));
 
-    let email: string, pass: string;
-    try {
-      email = await input({ message: 'Email' });
-      pass  = await password({ message: 'Password', mask: '*' });
-    } catch (err) {
-      if (err instanceof ExitPromptError) {
-        console.log(chalk.yellow('\n  Aborted.'));
-        process.exit(0);
-      }
-      throw err;
-    }
+    const email = await input({ message: 'Email' });
+    const pass  = await password({ message: 'Password', mask: '*' });
+
+    // All prompts done — restore terminal before any process.exit or I/O
+    restoreTerminal();
 
     if (!email || !pass) {
       console.log(chalk.yellow('  Aborted.'));
       process.exit(0);
     }
 
-    // Clear any stale token so the 401 from wrong credentials doesn't trigger a refresh attempt
     clearAuth();
 
-    const spinner = ora({ text: 'Authenticating...', indent: 2, discardStdin: false }).start();
+    process.stdout.write(chalk.dim('  Authenticating...\n'));
 
     try {
       const result = await api.post<{ accessToken: string; refreshToken: string; user: any }>(
@@ -49,11 +40,9 @@ export const loginCommand = new Command('login')
       config.set('userId', result.user.id);
       config.set('email', result.user.email);
 
-      spinner.stop();
       successLine(`Logged in as ${chalk.bold(result.user.email)}`);
       console.log();
     } catch (err) {
-      spinner.stop();
       if (err instanceof ApiError) {
         failLine(err.message);
         process.exit(1);

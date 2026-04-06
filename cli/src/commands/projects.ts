@@ -1,7 +1,6 @@
 import { Command } from 'commander';
-import { input, confirm } from '@inquirer/prompts';
-import { ExitPromptError } from '@inquirer/core';
 import chalk from 'chalk';
+import { input, confirm, restoreTerminal } from '../utils/prompt.js';
 import { api, ApiError } from '../api.js';
 import { readProjectLink } from '../config.js';
 
@@ -11,15 +10,10 @@ projectsCommand
   .command('create')
   .description('Create a new project')
   .action(async () => {
-    let name: string, slug: string;
-    try {
-      name = await input({ message: 'Project name' });
-      const defaultSlug = name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
-      slug = await input({ message: 'Slug (lowercase, no spaces)', default: defaultSlug });
-    } catch (err) {
-      if (err instanceof ExitPromptError) { process.exit(0); }
-      throw err;
-    }
+    const name = await input({ message: 'Project name' });
+    const defaultSlug = name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+    const slug = await input({ message: 'Slug (lowercase, no spaces)', default: defaultSlug });
+    restoreTerminal();
 
     if (!name || !slug) { process.exit(0); }
 
@@ -123,7 +117,6 @@ projectsCommand
     }
 
     try {
-      // Get members to find userId by email
       const { members } = await api.get<{ members: any[] }>(`/projects/${link.projectId}/members`);
       const target = members.find((m: any) => m.user.email === email);
       if (!target) {
@@ -131,16 +124,11 @@ projectsCommand
         process.exit(1);
       }
 
-      let confirmed: boolean;
-      try {
-        confirmed = await confirm({
-          message: `Remove ${email} (${target.role}) from ${link.projectName}?`,
-          default: false,
-        });
-      } catch (err) {
-        if (err instanceof ExitPromptError) { console.log(chalk.dim('\n  Aborted.')); process.exit(0); }
-        throw err;
-      }
+      const confirmed = await confirm({
+        message: `Remove ${email} (${target.role}) from ${link.projectName}?`,
+        default: false,
+      });
+      restoreTerminal();
       if (!confirmed) { console.log(chalk.dim('  Aborted.')); process.exit(0); }
 
       await api.delete(`/projects/${link.projectId}/members/${target.user.id}`);
@@ -163,16 +151,11 @@ projectsCommand
     }
 
     if (!opts.force) {
-      let confirmed: boolean;
-      try {
-        confirmed = await confirm({
-          message: chalk.red(`Permanently delete project "${link.projectName}" and ALL its secrets? This cannot be undone.`),
-          default: false,
-        });
-      } catch (err) {
-        if (err instanceof ExitPromptError) { console.log(chalk.dim('\n  Aborted.')); process.exit(0); }
-        throw err;
-      }
+      const confirmed = await confirm({
+        message: chalk.red(`Permanently delete project "${link.projectName}" and ALL its secrets? This cannot be undone.`),
+        default: false,
+      });
+      restoreTerminal();
       if (!confirmed) { console.log(chalk.dim('  Aborted.')); process.exit(0); }
     }
 
