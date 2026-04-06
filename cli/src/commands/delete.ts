@@ -1,7 +1,8 @@
 import { Command } from 'commander';
 import chalk from 'chalk';
 import ora from 'ora';
-import prompts from 'prompts';
+import { confirm } from '@inquirer/prompts';
+import { ExitPromptError } from '@inquirer/core';
 import { api, ApiError } from '../api.js';
 import { readProjectLink } from '../config.js';
 import { successLine, failLine } from '../utils/brand.js';
@@ -29,12 +30,16 @@ export const deleteCommand = new Command('delete')
       }
 
       if (!opts.force) {
-        const { confirmed } = await prompts({
-          type: 'confirm',
-          name: 'confirmed',
-          message: `Delete "${key}" from ${link.projectName}? This removes all values for all team members.`,
-          initial: false,
-        });
+        let confirmed: boolean;
+        try {
+          confirmed = await confirm({
+            message: `Delete "${key}" from ${link.projectName}? This removes all values for all team members.`,
+            default: false,
+          });
+        } catch (err) {
+          if (err instanceof ExitPromptError) { console.log(chalk.dim('\n  Aborted.')); process.exit(0); }
+          throw err;
+        }
         if (!confirmed) { console.log(chalk.dim('  Aborted.')); process.exit(0); }
       }
 

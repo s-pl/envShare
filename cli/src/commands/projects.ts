@@ -1,5 +1,6 @@
 import { Command } from 'commander';
-import prompts from 'prompts';
+import { input, confirm } from '@inquirer/prompts';
+import { ExitPromptError } from '@inquirer/core';
 import chalk from 'chalk';
 import { api, ApiError } from '../api.js';
 import { readProjectLink } from '../config.js';
@@ -10,24 +11,20 @@ projectsCommand
   .command('create')
   .description('Create a new project')
   .action(async () => {
-    const answers = await prompts([
-      { type: 'text', name: 'name', message: 'Project name' },
-      {
-        type: 'text',
-        name: 'slug',
-        message: 'Slug (lowercase, no spaces)',
-        initial: (_prev: any, values: any) =>
-          values.name?.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, ''),
-      },
-    ]);
+    let name: string, slug: string;
+    try {
+      name = await input({ message: 'Project name' });
+      const defaultSlug = name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+      slug = await input({ message: 'Slug (lowercase, no spaces)', default: defaultSlug });
+    } catch (err) {
+      if (err instanceof ExitPromptError) { process.exit(0); }
+      throw err;
+    }
 
-    if (!answers.name || !answers.slug) { process.exit(0); }
+    if (!name || !slug) { process.exit(0); }
 
     try {
-      const { project } = await api.post<{ project: any }>('/projects', {
-        name: answers.name,
-        slug: answers.slug,
-      });
+      const { project } = await api.post<{ project: any }>('/projects', { name, slug });
       console.log(chalk.green(`\n  Project "${project.name}" created.\n`));
       console.log(chalk.dim('  Run `envshare init` in your project folder to link it.\n'));
     } catch (err) {
@@ -134,12 +131,16 @@ projectsCommand
         process.exit(1);
       }
 
-      const { confirmed } = await prompts({
-        type: 'confirm',
-        name: 'confirmed',
-        message: `Remove ${email} (${target.role}) from ${link.projectName}?`,
-        initial: false,
-      });
+      let confirmed: boolean;
+      try {
+        confirmed = await confirm({
+          message: `Remove ${email} (${target.role}) from ${link.projectName}?`,
+          default: false,
+        });
+      } catch (err) {
+        if (err instanceof ExitPromptError) { console.log(chalk.dim('\n  Aborted.')); process.exit(0); }
+        throw err;
+      }
       if (!confirmed) { console.log(chalk.dim('  Aborted.')); process.exit(0); }
 
       await api.delete(`/projects/${link.projectId}/members/${target.user.id}`);

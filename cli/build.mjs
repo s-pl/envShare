@@ -27,7 +27,7 @@ const result = await esbuild.build({
   entryPoints: ['src/index.ts'],
   bundle: true,
   platform: 'node',
-  target: 'node20',
+  target: 'node22',
   format: 'esm',
   outfile: 'bundle.mjs',
   external: ['fsevents'],
@@ -58,7 +58,7 @@ const result2 = await esbuild.build({
   entryPoints: ['bundle.mjs'],
   bundle: false,
   platform: 'node',
-  target: 'node20',
+  target: 'node22',
   format: 'cjs',
   outfile: 'bundle.cjs',
   // Replace import.meta.url with a CJS-compatible equivalent so that

@@ -8,23 +8,29 @@
 ## Encryption Model
 
 ```
-MASTER_ENCRYPTION_KEY (env var, never in DB)
+MASTER_ENCRYPTION_KEY (env var — validated at startup, never stored in DB)
         │
-        ▼
-  wrapKey(projectKey)  ──► stored as JSON in projects.encryptedKey
+        ▼  wrapKey(projectKey) → AES-256-GCM
+  projects.encryptedKey  (JSON: { encryptedData, iv, tag })
         │
-        ▼
-  Project Key (32-byte random, per project)
+        ▼  unwrapKey() on each request
+  Project Key  (32 random bytes, per project, decrypted in memory)
         │
-        ├──► encrypt(secretKey)   ──► secrets.encryptedKey + keyIV + keyTag
-        └──► encrypt(secretValue) ──► secrets.encryptedValue + valueIV + valueTag
+        ├──► encrypt(secretKeyName)   → secrets.encryptedKey  + keyIV  + keyTag
+        ├──► encrypt(sharedValue)     → secrets.sharedEncryptedValue + sharedValueIV + sharedValueTag
+        ├──► encrypt(personalValue)   → userSecretValues.encryptedValue + valueIV + valueTag
+        └──► HMAC-SHA256(keyName)     → secrets.keyHash  (deduplication index, not reversible)
 ```
 
-### Algorithm
-- **AES-256-GCM** for all secret encryption
-- Per-secret random IVs (128-bit)
-- Authentication tags prevent silent tampering
-- bcrypt (rounds=12) for password hashing
+### Algorithms
+
+| Purpose | Algorithm | Details |
+|---------|-----------|---------|
+| Secret encryption | AES-256-GCM | Per-secret random 128-bit IV. Auth tag prevents silent tampering. |
+| Key wrapping | AES-256-GCM | Same algorithm, separate IV for each wrap operation. |
+| Key deduplication | HMAC-SHA256 | Keyed with the project key — cannot be inverted without it. |
+| Password hashing | bcrypt | 12 rounds (~300ms per hash on a modern CPU). |
+| Refresh token storage | SHA-256 | Tokens are long random values; SHA-256 sufficient without bcrypt cost. |
 
 ---
 
@@ -89,51 +95,55 @@ MASTER_ENCRYPTION_KEY (env var, never in DB)
 
 | Threat | Mitigation |
 |--------|-----------|
-| Database compromise | Secrets encrypted with AES-256-GCM; master key not in DB |
-| Token theft | Short-lived access tokens (15 min); refresh token rotation; HttpOnly cookies |
-| Brute force — password | bcrypt(12) + rate limiting (20 req/15 min per IP) + **account lockout** (10 attempts → 30 min lock) |
-| Brute force — token | Refresh tokens are cryptographically random 40-byte hex strings |
-| MITM | TLS in transit; HSTS headers; SameSite=Strict cookie |
-| Secret leakage in logs | Values never logged; only key names in audit logs |
-| Replay attacks | GCM auth tags; refresh token single-use rotation |
-| CSRF | SameSite=Strict cookie; access token in Authorization header (not cookie) |
-| XSS | HttpOnly refresh token cookie; access token in JS memory only (not localStorage); CSP headers |
-| Clickjacking | X-Frame-Options: DENY |
-| MIME sniffing | X-Content-Type-Options: nosniff |
-| IP spoofing | `trust proxy 1` (trust exactly one upstream hop); nginx sets `X-Forwarded-For` |
-| Privilege escalation | Role checked on every request; `requireProjectAccess` middleware enforces minimum role |
-| Account takeover | Account lockout; password-change revokes all sessions; login events logged with IP |
-| Insider threat | Audit logs with actor + IP; admins cannot read other users' personal secrets (per-user encryption) |
-| Data over-retention | Automated daily retention job purges expired tokens and audit logs older than `AUDIT_LOG_RETENTION_DAYS` |
+| **Database compromise** | Secrets encrypted with AES-256-GCM; master key not in DB; refresh tokens stored as SHA-256 hashes only |
+| **Token theft** | Short-lived access tokens (15 min, memory only); refresh token single-use rotation; HttpOnly cookies for browser path |
+| **Brute force — password** | bcrypt(12) + rate limiting (20 req/15 min per IP) + account lockout (10 attempts → 30 min lock, persists across restarts) |
+| **Brute force — token** | Refresh tokens are 40 random bytes (80 hex chars); SHA-256 stored; single-use |
+| **Misconfiguration** | Server validates `JWT_SECRET` (≥32 bytes) and `MASTER_ENCRYPTION_KEY` (64 hex chars) at startup and exits immediately if invalid |
+| **MITM** | TLS in transit; HSTS max-age=1y + preload; SameSite=Strict cookie |
+| **Secret leakage in logs** | Values never logged; only key names appear in audit entries |
+| **Replay attacks** | GCM auth tags validate ciphertext integrity; refresh token single-use rotation |
+| **CSRF** | SameSite=Strict cookie; access token in Authorization header (not cookie) |
+| **XSS** | HttpOnly refresh token cookie; access token in JS memory only (not localStorage); CSP headers via Helmet |
+| **Clickjacking** | X-Frame-Options: DENY |
+| **MIME sniffing** | X-Content-Type-Options: nosniff |
+| **IP spoofing** | `trust proxy` explicitly scoped; unsafe to enable globally |
+| **Privilege escalation** | Role enforced per-request; `requireProjectAccess()` middleware validates minimum role before any handler runs |
+| **Account takeover** | Account lockout; password-change revokes all sessions; all login events logged with IP |
+| **Insider threat** | Admins cannot read other users' personal secrets (per-user encryption); full audit trail with actor + IP |
+| **Data over-retention** | Daily retention job (single DB transaction) purges expired tokens and audit logs older than `AUDIT_LOG_RETENTION_DAYS` |
+| **Path traversal on pull** | CLI validates that all output paths resolve inside `process.cwd()` before writing |
 
 ---
 
 ## Authentication Flow
 
 ```
-┌─────────┐                              ┌─────────┐
-│ Browser │                              │  API    │
-└────┬────┘                              └────┬────┘
-     │  POST /auth/login {email, pass}        │
-     │ ─────────────────────────────────────► │  1. Verify password (bcrypt)
-     │                                        │  2. Check account lockout
-     │                                        │  3. Issue JWT (15 min) + refresh token (7 days)
-     │                                        │  4. Set HttpOnly cookie
-     │ ◄───────────────────────────────────── │
-     │  {accessToken}  +  Set-Cookie          │
-     │                                        │
-     │  GET /api/v1/projects                  │
-     │  Authorization: Bearer <accessToken>   │
-     │ ─────────────────────────────────────► │
-     │                                        │
-     │  [token expires after 15 min]          │
-     │                                        │
-     │  POST /auth/refresh (cookie sent auto) │
-     │ ─────────────────────────────────────► │  1. Validate refresh token
-     │                                        │  2. Delete old token (single-use)
-     │                                        │  3. Issue new token pair
-     │ ◄───────────────────────────────────── │
-     │  {accessToken}  +  new Set-Cookie      │
+Client (browser / CLI)                        API                    DB
+─────────────────────────────────────────────────────────────────────────
+
+POST /auth/login {email, password}
+  [x-client: cli] → token pair in body   ──►  bcrypt.compare(pw, hash)
+  [browser]        → token in cookie          check lockedUntil
+                                              INSERT refresh_token {
+                                                token: SHA256(rawToken),
+                                                expiresAt, ip, ua
+                                              }
+                                         ◄──  {accessToken}
+                                              Set-Cookie: refresh_token=<raw>; HttpOnly; SameSite=Strict
+
+GET /api/v1/* Authorization: Bearer <accessToken>
+                                         ──►  jwt.verify(token, JWT_SECRET)
+                                         ◄──  200 OK
+
+[access token expires — 15 min]
+
+POST /auth/refresh
+  body: {refreshToken: <raw>}  (CLI)     ──►  findUnique({token: SHA256(raw)})
+  cookie: refresh_token=<raw>  (browser)      DELETE old record  ← single-use
+                                              INSERT new_record {token: SHA256(newRaw)}
+                                         ◄──  {accessToken, refreshToken: newRaw}  (CLI)
+                                              Set-Cookie: refresh_token=<newRaw>    (browser)
 ```
 
 ---
