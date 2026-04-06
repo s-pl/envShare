@@ -30,7 +30,7 @@ export const setCommand = new Command('set')
         process.exit(1);
       }
 
-      const spinner = ora({ text: opts.shared ? 'Updating shared value...' : 'Setting personal value...', indent: 2 }).start();
+      const spinner = ora({ text: opts.shared ? 'Updating shared value...' : 'Setting personal value...', indent: 2, discardStdin: false }).start();
 
       if (opts.shared) {
         await api.patch(`/secrets/${secret.id}/shared`, { value });

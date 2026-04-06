@@ -48,7 +48,7 @@ export const registerCommand = new Command('register')
       process.exit(1);
     }
 
-    const spinner = ora({ text: 'Creating account...', indent: 2 }).start();
+    const spinner = ora({ text: 'Creating account...', indent: 2, discardStdin: false }).start();
 
     try {
       const { user } = await api.post<{ user: any }>('/auth/register', {

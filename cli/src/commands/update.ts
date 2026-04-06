@@ -48,7 +48,7 @@ export const updateCommand = new Command('update')
 
     // ── 1. Fetch latest release from GitHub ───────────────────────────────────
     sectionHeader('Update');
-    const spinner = ora({ text: 'Checking for updates...', indent: 2 }).start();
+    const spinner = ora({ text: 'Checking for updates...', indent: 2, discardStdin: false }).start();
     let release: any;
     try {
       release = await fetchJson(`https://api.github.com/repos/${GITHUB_REPO}/releases/latest`);
@@ -115,7 +115,7 @@ export const updateCommand = new Command('update')
     const installDir  = dirname(currentExe);
     const tmpPath     = join(installDir, 'envshare-update.tmp');
 
-    const dlSpinner = ora({ text: `Downloading ${assetName}...`, indent: 2 }).start();
+    const dlSpinner = ora({ text: `Downloading ${assetName}...`, indent: 2, discardStdin: false }).start();
     try {
       await downloadBinary(asset.browser_download_url, tmpPath);
       dlSpinner.stop();

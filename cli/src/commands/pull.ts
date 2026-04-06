@@ -56,7 +56,7 @@ export const pullCommand = new Command('pull')
 
     sectionHeader(`Pull · ${link.projectName}`);
 
-    const spinner = ora({ text: 'Downloading secrets...', indent: 2 }).start();
+    const spinner = ora({ text: 'Downloading secrets...', indent: 2, discardStdin: false }).start();
 
     try {
       const pullUrl = opts.env

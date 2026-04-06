@@ -36,7 +36,7 @@ export const loginCommand = new Command('login')
     // Clear any stale token so the 401 from wrong credentials doesn't trigger a refresh attempt
     clearAuth();
 
-    const spinner = ora({ text: 'Authenticating...', indent: 2 }).start();
+    const spinner = ora({ text: 'Authenticating...', indent: 2, discardStdin: false }).start();
 
     try {
       const result = await api.post<{ accessToken: string; refreshToken: string; user: any }>(
