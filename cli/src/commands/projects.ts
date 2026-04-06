@@ -150,3 +150,37 @@ projectsCommand
       throw err;
     }
   });
+
+projectsCommand
+  .command('delete')
+  .description('Permanently delete the project and all its secrets (ADMIN only)')
+  .option('-f, --force', 'Skip confirmation prompt')
+  .action(async (opts) => {
+    const link = readProjectLink();
+    if (!link) {
+      console.error(chalk.red('  No project linked. Run `envshare init` first.'));
+      process.exit(1);
+    }
+
+    if (!opts.force) {
+      let confirmed: boolean;
+      try {
+        confirmed = await confirm({
+          message: chalk.red(`Permanently delete project "${link.projectName}" and ALL its secrets? This cannot be undone.`),
+          default: false,
+        });
+      } catch (err) {
+        if (err instanceof ExitPromptError) { console.log(chalk.dim('\n  Aborted.')); process.exit(0); }
+        throw err;
+      }
+      if (!confirmed) { console.log(chalk.dim('  Aborted.')); process.exit(0); }
+    }
+
+    try {
+      await api.delete(`/projects/${link.projectId}`);
+      console.log(chalk.green(`  Project "${link.projectName}" deleted.`));
+    } catch (err) {
+      if (err instanceof ApiError) { console.error(chalk.red(`  Error: ${err.message}`)); process.exit(1); }
+      throw err;
+    }
+  });
