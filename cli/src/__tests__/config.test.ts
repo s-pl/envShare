@@ -26,6 +26,7 @@ import { existsSync, readFileSync } from 'fs';
 import {
   readProjectLink,
   readPushConfig,
+  clearConfigCache,
   matchesPattern,
   isAutoShared,
   isIgnored,
@@ -36,6 +37,7 @@ const mockReadFileSync = readFileSync as ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
   vi.clearAllMocks();
+  clearConfigCache();
 });
 
 describe('readProjectLink', () => {
