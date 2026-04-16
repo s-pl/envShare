@@ -15,12 +15,19 @@ interface AuditItem {
 }
 
 export const auditCommand = new Command('audit')
-  .description('Show project audit log (ADMIN only)')
-  .option('-n, --limit <n>', 'Number of entries to show', '50')
-  .option('--from <date>', 'Show entries after this date (ISO or readable)')
-  .option('--to <date>', 'Show entries before this date (ISO or readable)')
-  .option('--action <action>', 'Filter by action type (e.g. SECRETS_PUSHED)')
-  .option('--json', 'Output as JSON')
+  .description('Show the project audit trail — who did what and when (ADMIN only)')
+  .option('-n, --limit <n>', 'Max number of entries to show (default: 50)', '50')
+  .option('--from <date>', 'Only show entries after this date (ISO 8601 or readable)')
+  .option('--to <date>', 'Only show entries before this date (ISO 8601 or readable)')
+  .option('--action <action>', 'Filter by action type (e.g. SECRETS_PUSHED, AUTH_LOGIN_SUCCESS)')
+  .option('--json', 'Output as machine-readable JSON')
+  .addHelpText('after', `
+Examples:
+  $ envshare audit                              Last 50 entries
+  $ envshare audit -n 100                       Last 100 entries
+  $ envshare audit --from 2025-01-01            Everything since Jan 1st
+  $ envshare audit --action SECRETS_PUSHED      Only push events
+  $ envshare audit --json                       JSON output for SIEM integration`)
   .action(async (opts) => {
     const link = readProjectLink();
     if (!link) {

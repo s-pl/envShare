@@ -14,8 +14,13 @@ interface VersionView {
 }
 
 export const historyCommand = new Command('history')
-  .description('Show version history for a secret key')
-  .argument('<key>', 'Secret key name')
+  .alias('log')
+  .description('Show the full version history of a secret (who changed it, when, and how)')
+  .argument('<key>', 'Secret key name (e.g. DATABASE_URL)')
+  .addHelpText('after', `
+Examples:
+  $ envshare history DATABASE_URL    Show all versions with actor, action and timestamp
+  $ envshare log API_KEY             Same (alias)`)
   .action(async (key: string) => {
     const link = readProjectLink();
     if (!link) {

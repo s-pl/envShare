@@ -14,12 +14,25 @@ vi.mock('../../utils/prisma', () => ({
       findUnique: vi.fn(),
       delete: vi.fn(),
       deleteMany: vi.fn(),
-      findMany: vi.fn(),
+      findMany: vi.fn().mockResolvedValue([]),
     },
     auditLog: {
       create: vi.fn(),
     },
+    project: {
+      findMany: vi.fn(),
+    },
+    projectMember: {
+      createMany: vi.fn(),
+    },
   },
+}));
+
+// server.config.json lookups are irrelevant for these mocked tests — stub them.
+vi.mock('../../utils/serverConfig', () => ({
+  isServerAdmin: () => false,
+  getAdminEmails: () => [],
+  getServerConfig: () => ({ admins: [] }),
 }));
 
 import { prisma } from '../../utils/prisma';
@@ -35,23 +48,35 @@ beforeEach(() => {
 describe('authService.register', () => {
   it('creates a user and returns profile without passwordHash', async () => {
     mockPrisma.user.findUnique.mockResolvedValue(null);
-    const created = { id: 'u1', email: 'a@b.com', name: 'Alice', createdAt: new Date(), consentedAt: new Date() };
+    const created = { id: 'u1', email: 'a@b.com', name: 'a', createdAt: new Date() };
     mockPrisma.user.create.mockResolvedValue(created);
 
-    const result = await authService.register('a@b.com', 'strongpassword1', 'Alice', true);
+    const result = await authService.register('a@b.com', 'strongpassword1');
     expect(result.email).toBe('a@b.com');
     expect(result).not.toHaveProperty('passwordHash');
   });
 
-  it('throws AUTH_EMAIL_TAKEN if email already exists', async () => {
-    mockPrisma.user.findUnique.mockResolvedValue({ id: 'existing' });
-    await expect(authService.register('a@b.com', 'pass', 'Alice', true))
-      .rejects.toMatchObject({ code: 'AUTH_EMAIL_TAKEN' });
+  it('derives name from email local-part', async () => {
+    mockPrisma.user.findUnique.mockResolvedValue(null);
+    mockPrisma.user.create.mockImplementation(async ({ data }: any) => ({
+      id: 'u1',
+      email: data.email,
+      name: data.name,
+      createdAt: new Date(),
+    }));
+
+    await authService.register('alice@example.com', 'strongpassword1');
+    expect(mockPrisma.user.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ email: 'alice@example.com', name: 'alice' }),
+      }),
+    );
   });
 
-  it('throws GDPR_CONSENT_REQUIRED when consent is false', async () => {
-    await expect(authService.register('a@b.com', 'pass', 'Alice', false))
-      .rejects.toMatchObject({ code: 'GDPR_CONSENT_REQUIRED' });
+  it('throws AUTH_EMAIL_TAKEN if email already exists', async () => {
+    mockPrisma.user.findUnique.mockResolvedValue({ id: 'existing' });
+    await expect(authService.register('a@b.com', 'strongpassword1'))
+      .rejects.toMatchObject({ code: 'AUTH_EMAIL_TAKEN' });
   });
 });
 

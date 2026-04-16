@@ -4,8 +4,13 @@ import { config } from '../config.js';
 import { ApiError, probeEnvShareServer } from '../api.js';
 
 export const urlCommand = new Command('url')
-  .description('Get or set the API server URL')
-  .argument('[url]', 'New API server URL to set')
+  .alias('server')
+  .description('Get or set the envShare server URL')
+  .argument('[url]', 'Server URL (e.g. https://envshare.example.com)')
+  .addHelpText('after', `
+Examples:
+  $ envshare url                          Show current server URL
+  $ envshare url https://secrets.myco.io  Connect to a different server`)
   .action(async (url?: string) => {
     if (url) {
       try {

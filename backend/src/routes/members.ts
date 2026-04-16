@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { prisma } from '../utils/prisma';
 import { AppError } from '../middleware/errorHandler';
+import { isServerAdmin } from '../utils/serverConfig';
 
 export const membersRouter = Router();
 membersRouter.use(authenticate);
@@ -31,8 +32,12 @@ membersRouter.post('/:projectId/members', async (req: AuthRequest, res, next) =>
     });
     if (existing) throw new AppError(409, `${body.email} is already a member`, 'MEMBER_ALREADY_EXISTS');
 
+    // Server-admins (server.config.json) are always enrolled as ADMIN,
+    // regardless of the role requested.
+    const effectiveRole = isServerAdmin(target.email) ? 'ADMIN' : body.role;
+
     const member = await prisma.projectMember.create({
-      data: { projectId: req.params.projectId, userId: target.id, role: body.role },
+      data: { projectId: req.params.projectId, userId: target.id, role: effectiveRole },
       include: { user: { select: { email: true, name: true } } },
     });
 
@@ -75,6 +80,20 @@ membersRouter.patch('/:projectId/members/:userId', async (req: AuthRequest, res,
       throw new AppError(400, 'You cannot change your own role', 'SELF_ROLE_CHANGE');
     }
 
+    // Server-admins cannot be downgraded — their ADMIN status is enforced by
+    // server.config.json and must stay in sync across every project.
+    const targetUser = await prisma.user.findUnique({
+      where: { id: req.params.userId },
+      select: { email: true },
+    });
+    if (targetUser && isServerAdmin(targetUser.email) && body.role !== 'ADMIN') {
+      throw new AppError(
+        400,
+        `${targetUser.email} is a server admin and must remain ADMIN.`,
+        'SERVER_ADMIN_IMMUTABLE',
+      );
+    }
+
     const member = await prisma.projectMember.update({
       where: { projectId_userId: { projectId: req.params.projectId, userId: req.params.userId } },
       data: { role: body.role },
@@ -97,7 +116,18 @@ membersRouter.delete('/:projectId/members/:userId', async (req: AuthRequest, res
 
     const target = await prisma.projectMember.findUnique({
       where: { projectId_userId: { projectId: req.params.projectId, userId: req.params.userId } },
+      include: { user: { select: { email: true } } },
     });
+
+    // Server-admins are pinned to every project by server.config.json — block
+    // removal so admins-in-all-projects cannot be circumvented per-project.
+    if (target && isServerAdmin(target.user.email)) {
+      throw new AppError(
+        400,
+        `${target.user.email} is a server admin and cannot be removed from a project.`,
+        'SERVER_ADMIN_IMMUTABLE',
+      );
+    }
 
     // Prevent orphaning the project by removing the last ADMIN
     if (target?.role === 'ADMIN') {

@@ -5,6 +5,7 @@ import { prisma } from '../utils/prisma';
 import { generateKey, wrapKey, getMasterKey } from '../utils/crypto';
 import { AppError } from '../middleware/errorHandler';
 import { environmentService } from '../services/environmentService';
+import { getAdminEmails } from '../utils/serverConfig';
 
 export const projectsRouter = Router();
 projectsRouter.use(authenticate);
@@ -51,6 +52,27 @@ projectsRouter.post('/', async (req: AuthRequest, res, next) => {
       },
     });
 
+    // Auto-enrol every registered server-admin (from server.config.json) as
+    // ADMIN on the new project, so the "admins in all projects" invariant holds
+    // regardless of who created the project.
+    const adminEmails = getAdminEmails().filter(e => e !== req.user!.email);
+    if (adminEmails.length > 0) {
+      const adminUsers = await prisma.user.findMany({
+        where: { email: { in: adminEmails } },
+        select: { id: true },
+      });
+      if (adminUsers.length > 0) {
+        await prisma.projectMember.createMany({
+          data: adminUsers.map(u => ({
+            projectId: project.id,
+            userId: u.id,
+            role: 'ADMIN' as const,
+          })),
+          skipDuplicates: true,
+        });
+      }
+    }
+
     // Auto-create a default "production" environment for every new project
     await environmentService.getOrCreate(project.id, 'production', '.env');
 
@@ -60,15 +82,16 @@ projectsRouter.post('/', async (req: AuthRequest, res, next) => {
 
 projectsRouter.get('/:projectId', async (req: AuthRequest, res, next) => {
   try {
-    const member = await prisma.projectMember.findUnique({
-      where: { projectId_userId: { projectId: req.params.projectId, userId: req.user!.id } },
-    });
+    const [member, project] = await Promise.all([
+      prisma.projectMember.findUnique({
+        where: { projectId_userId: { projectId: req.params.projectId, userId: req.user!.id } },
+      }),
+      prisma.project.findUnique({
+        where: { id: req.params.projectId },
+        include: { members: { include: { user: { select: { id: true, email: true, name: true } } } } },
+      }),
+    ]);
     if (!member) throw new AppError(403, 'Access denied', 'FORBIDDEN');
-
-    const project = await prisma.project.findUnique({
-      where: { id: req.params.projectId },
-      include: { members: { include: { user: { select: { id: true, email: true, name: true } } } } },
-    });
     res.json({ project: { ...project, encryptedKey: undefined } });
   } catch (err) { next(err); }
 });

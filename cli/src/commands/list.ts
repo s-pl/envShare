@@ -14,8 +14,14 @@ interface SecretMeta {
 }
 
 export const listCommand = new Command('list')
-  .description('List secret keys for the current project (no values shown)')
-  .option('--json', 'Output as JSON')
+  .alias('ls')
+  .description('List all secret keys in the linked project (values are never shown)')
+  .option('--json', 'Output as machine-readable JSON')
+  .addHelpText('after', `
+Examples:
+  $ envshare list               Table view with key, type, version, status
+  $ envshare ls                 Same (alias)
+  $ envshare list --json        JSON output for scripting / CI pipelines`)
   .action(async (opts) => {
     const link = readProjectLink();
     if (!link) {

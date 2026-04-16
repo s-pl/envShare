@@ -7,7 +7,14 @@ import { paginatedSelect } from '../utils/paginatedSelect.js';
 import { sectionHeader, successLine } from '../utils/brand.js';
 
 export const initCommand = new Command('init')
-  .description('Link current directory to a project')
+  .alias('link')
+  .description('Link the current directory to an envShare project (creates .envshare.json)')
+  .addHelpText('after', `
+Examples:
+  $ cd my-app && envshare init   Select a project and link this folder
+
+  This writes .envshare.json to the current directory. All push/pull/set/list
+  commands use this file to determine which project to operate on.`)
   .action(async () => {
     sectionHeader('Link project');
 

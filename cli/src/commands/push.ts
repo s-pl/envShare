@@ -76,19 +76,30 @@ function loadEntries(absPath: string, pushCfg: ReturnType<typeof readPushConfig>
     .map(e => ({ ...e, isShared: e.isShared || isAutoShared(e.key, pushCfg) }));
 }
 
-async function selectEnvFile(filePaths: string[], pushCfg: ReturnType<typeof readPushConfig>, root: string): Promise<string | null> {
-  if (filePaths.length === 1) return filePaths[0];
-  const choices = filePaths
+type LoadedFile = { path: string; entries: ReturnType<typeof loadEntries> };
+
+async function selectEnvFile(
+  filePaths: string[],
+  pushCfg: ReturnType<typeof readPushConfig>,
+  root: string,
+): Promise<LoadedFile | null> {
+  const loaded: LoadedFile[] = filePaths
     .filter(fp => existsSync(join(root, fp)))
-    .map(fp => {
-      const count = loadEntries(join(root, fp), pushCfg).length;
-      return { title: `${fp}  (${count} vars)`, value: fp };
-    });
-  if (!choices.length) return null;
-  return paginatedSelect('Which .env file?', choices);
+    .map(fp => ({ path: fp, entries: loadEntries(join(root, fp), pushCfg) }));
+
+  if (!loaded.length) return null;
+  if (loaded.length === 1) return loaded[0];
+
+  const choices = loaded.map(f => ({
+    title: `${f.path}  (${f.entries.length} vars)`,
+    value: f.path,
+  }));
+  const chosen = await paginatedSelect('Which .env file?', choices);
+  return chosen ? (loaded.find(f => f.path === chosen) ?? null) : null;
 }
 
 const BATCH_SIZE = 10;
+const CONCURRENCY = 3;
 
 function chunk<T>(arr: T[], size: number): T[][] {
   const out: T[][] = [];
@@ -112,16 +123,22 @@ async function pushWithProgress(
   const totals = { created: 0, updated: 0, shared: 0 };
 
   try {
-    for (const batch of batches) {
-      const { result } = await api.post<{ result: { created: string[]; updated: string[]; sharedUpdated: string[] } }>(
-        `/sync/${projectId}/push`,
-        { secrets: batch, filePath, environmentName },
+    for (let i = 0; i < batches.length; i += CONCURRENCY) {
+      const window = batches.slice(i, i + CONCURRENCY);
+      const responses = await Promise.all(
+        window.map(batch =>
+          api.post<{ result: { created: string[]; updated: string[]; sharedUpdated: string[] } }>(
+            `/sync/${projectId}/push`,
+            { secrets: batch, filePath, environmentName },
+          ),
+        ),
       );
-      done += batch.length;
-      totals.created += result.created.length;
-      totals.updated += result.updated.length;
-      totals.shared  += result.sharedUpdated.length;
-
+      done += window.reduce((sum, b) => sum + b.length, 0);
+      responses.forEach(({ result }) => {
+        totals.created += result.created.length;
+        totals.updated += result.updated.length;
+        totals.shared  += result.sharedUpdated.length;
+      });
       process.stdout.write(`\r  ${bar(done, entries.length)}  ${done}/${entries.length}`);
     }
   } finally {
@@ -132,12 +149,26 @@ async function pushWithProgress(
 }
 
 export const pushCommand = new Command('push')
-  .description('Upload .env variables to the project')
-  .argument('[file]', '.env file to push')
-  .option('--all', 'Push all variables without confirmation prompt')
-  .option('--yes', 'Alias for --all, useful in CI')
-  .option('--env <name>', 'Tag secrets with this environment name (e.g. staging)')
-  .option('--dry-run', 'Preview what would be pushed without sending')
+  .alias('up')
+  .description('Upload .env variables to the linked project (auto-detects .env files)')
+  .argument('[file]', 'Specific .env file to push (auto-detected if omitted)')
+  .option('--all', 'Push all variables from all detected .env files without prompts')
+  .option('--yes', 'Alias for --all (useful in CI/CD pipelines)')
+  .option('--env <name>', 'Tag secrets with an environment name (e.g. staging, production)')
+  .option('--dry-run', 'Preview what would be pushed without actually sending anything')
+  .addHelpText('after', `
+Examples:
+  $ envshare push                      Interactive: pick file, select variables
+  $ envshare push .env.staging         Push a specific file
+  $ envshare push --all                Push all .env files without prompts
+  $ envshare push --env staging        Tag all pushed secrets as "staging"
+  $ envshare push --dry-run            See what would be pushed (no changes made)
+
+Shared variables:
+  Mark a variable as shared (visible to all team members) by adding a comment:
+    DATABASE_URL=postgres://... # @shared
+  Or configure patterns in .envshare.config.json:
+    { "sharedPatterns": ["*_URL", "DB_*"], "ignoredKeys": ["LOCAL_*"] }`)
   .action(async (file: string | undefined, opts) => {
     if (opts.yes) opts.all = true;
 
@@ -177,26 +208,60 @@ export const pushCommand = new Command('push')
       return;
     }
 
-    // ── --all / --yes: push every file without prompts ────────────────────────
+    // ── --all / --yes: push every file in parallel without prompts ───────────
     if (opts.all) {
-      let pushed = 0, failed = 0;
-      for (const fp of filePaths) {
-        const absPath = join(root, fp);
-        if (!existsSync(absPath)) { console.log(chalk.yellow(`  ⚠ skipped: ${fp} (not found)`)); continue; }
-        const entries = loadEntries(absPath, pushCfg);
-        if (!entries.length) { console.log(chalk.dim(`  ${fp}: no variables`)); continue; }
-        process.stdout.write(`  ${fp}  (${entries.length} vars)\n`);
-        try {
-          const t = await pushWithProgress(fp, link.projectId, entries, opts.env);
+      const loaded = filePaths
+        .map(fp => {
+          const absPath = join(root, fp);
+          if (!existsSync(absPath)) {
+            console.log(chalk.yellow(`  ⚠ skipped: ${fp} (not found)`));
+            return null;
+          }
+          const entries = loadEntries(absPath, pushCfg);
+          if (!entries.length) {
+            console.log(chalk.dim(`  ${fp}: no variables`));
+            return null;
+          }
+          return { fp, entries };
+        })
+        .filter((x): x is { fp: string; entries: ReturnType<typeof loadEntries> } => x !== null);
+
+      const results = await Promise.allSettled(
+        loaded.map(async ({ fp, entries }) => {
+          const batches = chunk(entries, BATCH_SIZE);
+          const totals = { created: 0, updated: 0, shared: 0 };
+          for (let i = 0; i < batches.length; i += CONCURRENCY) {
+            const window = batches.slice(i, i + CONCURRENCY);
+            const responses = await Promise.all(
+              window.map(b =>
+                api.post<{ result: { created: string[]; updated: string[]; sharedUpdated: string[] } }>(
+                  `/sync/${link.projectId}/push`,
+                  { secrets: b, filePath: fp, environmentName: opts.env },
+                ),
+              ),
+            );
+            responses.forEach(({ result }) => {
+              totals.created += result.created.length;
+              totals.updated += result.updated.length;
+              totals.shared  += result.sharedUpdated.length;
+            });
+          }
+          return { fp, totals };
+        }),
+      );
+
+      let failed = 0;
+      for (const r of results) {
+        if (r.status === 'fulfilled') {
+          const { fp, totals: t } = r.value;
           const parts: string[] = [];
           if (t.created) parts.push(`+${t.created} new`);
           if (t.updated) parts.push(`${t.updated} updated`);
           if (t.shared)  parts.push(`${t.shared} shared`);
           successLine(`${chalk.cyan(fp)}` + chalk.dim(`  —  ${parts.join(', ')}`));
-          pushed++;
-        } catch (err) {
-          if (err instanceof ApiError) console.error(chalk.red(`  ✗ ${fp}: ${err.message}`));
-          else console.error(chalk.red(`  ✗ ${fp}: unexpected error`));
+        } else {
+          const err = r.reason instanceof ApiError ? r.reason.message : 'unexpected error';
+          console.error(chalk.red(`  ✗ ${err}`));
           failed++;
         }
       }
@@ -206,16 +271,10 @@ export const pushCommand = new Command('push')
     }
 
     // ── Interactive flow ──────────────────────────────────────────────────────
-    const chosenFile = await selectEnvFile(filePaths, pushCfg, root);
-    if (!chosenFile) { console.log(chalk.yellow('  Aborted.')); process.exit(0); }
+    const chosen = await selectEnvFile(filePaths, pushCfg, root);
+    if (!chosen) { console.log(chalk.yellow('  Aborted.')); process.exit(0); }
 
-    const absPath = join(root, chosenFile);
-    if (!existsSync(absPath)) {
-      console.error(chalk.red(`  File not found: ${chosenFile}`));
-      process.exit(1);
-    }
-
-    const entries = loadEntries(absPath, pushCfg);
+    const { path: chosenFile, entries } = chosen!;
     if (!entries.length) {
       console.log(chalk.dim(`  No variables to push in ${chosenFile}\n`));
       process.exit(0);

@@ -24,7 +24,7 @@ function getCliVersion(): { version: string; description: string } {
 
 export const versionCommand = new Command('version')
   .alias('v')
-  .description('Show detailed version and environment information')
+  .description('Show CLI version, connection status, linked project and environment info')
   .action(() => {
     const { version } = getCliVersion();
 

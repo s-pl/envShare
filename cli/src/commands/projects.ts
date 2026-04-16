@@ -4,11 +4,22 @@ import { input, confirm, restoreTerminal } from '../utils/prompt.js';
 import { api, ApiError } from '../api.js';
 import { readProjectLink } from '../config.js';
 
-export const projectsCommand = new Command('project').description('Manage projects');
+export const projectsCommand = new Command('project')
+  .alias('p')
+  .description('Create, manage and collaborate on projects and team members')
+  .addHelpText('after', `
+Examples:
+  $ envshare project create                       Create a new project interactively
+  $ envshare project invite dev@company.io        Add teammate as DEVELOPER (default)
+  $ envshare project invite admin@co.io --role ADMIN
+  $ envshare project members                      List who has access
+  $ envshare project set-role dev@co.io VIEWER    Change a member's role
+  $ envshare project remove dev@co.io             Revoke access
+  $ envshare project delete                       Delete project and all secrets (ADMIN)`);
 
 projectsCommand
   .command('create')
-  .description('Create a new project')
+  .description('Create a new project with a name and slug')
   .action(async () => {
     const name = await input({ message: 'Project name' });
     const defaultSlug = name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
@@ -29,8 +40,8 @@ projectsCommand
 
 projectsCommand
   .command('invite <email>')
-  .description('Add a teammate to a project')
-  .option('--role <role>', 'Role: ADMIN, DEVELOPER, VIEWER', 'DEVELOPER')
+  .description('Invite a registered user to the linked project by email')
+  .option('--role <role>', 'Role: ADMIN, DEVELOPER, VIEWER (default: DEVELOPER)', 'DEVELOPER')
   .action(async (email: string, opts) => {
     const link = readProjectLink();
     if (!link) {
@@ -52,7 +63,8 @@ projectsCommand
 
 projectsCommand
   .command('members')
-  .description('List project members')
+  .alias('team')
+  .description('List all members and their roles in the linked project')
   .action(async () => {
     const link = readProjectLink();
     if (!link) {
@@ -76,7 +88,7 @@ projectsCommand
 
 projectsCommand
   .command('set-role <email> <role>')
-  .description('Change a member\'s role (ADMIN, DEVELOPER, VIEWER)')
+  .description('Change a member\'s role (ADMIN | DEVELOPER | VIEWER)')
   .action(async (email: string, role: string) => {
     const link = readProjectLink();
     if (!link) {
@@ -108,7 +120,8 @@ projectsCommand
 
 projectsCommand
   .command('remove <email>')
-  .description('Remove a member from the project')
+  .alias('kick')
+  .description('Remove a member from the linked project (with confirmation)')
   .action(async (email: string) => {
     const link = readProjectLink();
     if (!link) {
@@ -141,8 +154,8 @@ projectsCommand
 
 projectsCommand
   .command('delete')
-  .description('Permanently delete the project and all its secrets (ADMIN only)')
-  .option('-f, --force', 'Skip confirmation prompt')
+  .description('Permanently delete the linked project, all secrets and members (ADMIN only)')
+  .option('-f, --force', 'Skip the confirmation prompt (use with caution)')
   .action(async (opts) => {
     const link = readProjectLink();
     if (!link) {
