@@ -4,6 +4,7 @@ import { randomBytes, createHash } from "crypto";
 import { prisma } from "../utils/prisma";
 import { AppError } from "../middleware/errorHandler";
 import { logger } from "../utils/logger";
+import { isServerAdmin } from "../utils/serverConfig";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -18,6 +19,7 @@ const REFRESH_TOKEN_TTL_DAYS = 7;
  */
 const MAX_FAILED_ATTEMPTS = 10;
 const LOCKOUT_DURATION_MIN = 30;
+const MAX_ACTIVE_SESSIONS = 5;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -51,50 +53,47 @@ interface SessionMeta {
 
 export const authService = {
   /**
-   * Register a new user.
+   * Register a new user with email + password only.
    *
-   * GDPR Art. 7 — when `consent` is true, we record the exact timestamp the
-   * user accepted the Privacy Policy / Terms of Service so we can prove
-   * informed consent if ever challenged by a supervisory authority.
+   * Name is derived from the email's local-part — display-only, editable later.
+   * If the email is listed in server.config.json, the user is automatically
+   * added as ADMIN to every existing project.
    */
-  async register(
-    email: string,
-    password: string,
-    name: string,
-    consent: boolean,
-  ) {
-    // GDPR Art. 7 — explicit consent is required before processing personal data
-    if (!consent) {
-      throw new AppError(
-        400,
-        "You must accept the Privacy Policy to create an account.",
-        "GDPR_CONSENT_REQUIRED",
-      );
-    }
-
+  async register(email: string, password: string) {
     const existing = await prisma.user.findUnique({ where: { email } });
     if (existing)
       throw new AppError(409, "Email already registered", "AUTH_EMAIL_TAKEN");
 
     const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
+    const name = email.split("@")[0] || email;
 
     const user = await prisma.user.create({
-      data: {
-        email,
-        passwordHash,
-        name,
-        consentedAt: new Date(), // GDPR Art. 7 — record consent timestamp
-      },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        createdAt: true,
-        consentedAt: true,
-      },
+      data: { email, passwordHash, name },
+      select: { id: true, email: true, name: true, createdAt: true },
     });
 
-    logger.info("User registered", { userId: user.id, email: user.email });
+    // Server-admins are auto-enrolled as ADMIN on every existing project so
+    // they have the "admins in all projects" guarantee from day one.
+    if (isServerAdmin(user.email)) {
+      const projects = await prisma.project.findMany({ select: { id: true } });
+      if (projects.length > 0) {
+        await prisma.projectMember.createMany({
+          data: projects.map(p => ({
+            projectId: p.id,
+            userId: user.id,
+            role: "ADMIN" as const,
+          })),
+          skipDuplicates: true,
+        });
+      }
+      logger.info("Server-admin registered — auto-enrolled on all projects", {
+        userId: user.id,
+        email: user.email,
+        projectCount: projects.length,
+      });
+    } else {
+      logger.info("User registered", { userId: user.id, email: user.email });
+    }
 
     return user;
   },
@@ -206,6 +205,17 @@ export const authService = {
     const accessToken = signAccess(user.id, user.email);
     const refreshToken = randomBytes(40).toString("hex");
     const expiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_DAYS * 864e5);
+
+    // Enforce max active sessions per user — evict oldest if over the limit
+    const activeSessions = await prisma.refreshToken.findMany({
+      where: { userId: user.id, expiresAt: { gt: new Date() } },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true },
+    });
+    if (activeSessions.length >= MAX_ACTIVE_SESSIONS) {
+      const toDelete = activeSessions.slice(0, activeSessions.length - MAX_ACTIVE_SESSIONS + 1);
+      await prisma.refreshToken.deleteMany({ where: { id: { in: toDelete.map(s => s.id) } } });
+    }
 
     await prisma.refreshToken.create({
       data: {

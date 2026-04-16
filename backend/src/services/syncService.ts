@@ -40,12 +40,19 @@ export const syncService = {
     return prisma.$transaction(async (tx) => {
       const result: PushResult = { created: [], updated: [], sharedUpdated: [] };
 
-      for (const { key, value, isShared } of entries) {
-        const kHash = hashKey(key, projectKey);
+      const prepared = entries.map(e => ({ ...e, kHash: hashKey(e.key, projectKey) }));
 
-        let secret = await tx.secret.findUnique({
-          where: { projectId_keyHash_environmentId: { projectId, keyHash: kHash, environmentId: resolvedEnvId } },
-        });
+      const existingSecrets = await tx.secret.findMany({
+        where: {
+          projectId,
+          environmentId: resolvedEnvId,
+          keyHash: { in: prepared.map(p => p.kHash) },
+        },
+      });
+      const byHash = new Map(existingSecrets.map(s => [s.keyHash, s]));
+
+      for (const { key, value, isShared, kHash } of prepared) {
+        let secret = byHash.get(kHash) ?? null;
 
         const isNew = !secret;
 
@@ -64,6 +71,7 @@ export const syncService = {
               version: 1,
             },
           });
+          byHash.set(kHash, secret);
           result.created.push(key);
         } else {
           // Only sync isShared changes — environmentId is now part of the key,
@@ -174,28 +182,20 @@ export const syncService = {
   },
 
   async pull(projectId: string, userId: string, envFilter?: string) {
-    const secrets = await secretsService.listForUser(projectId, userId);
+    const [secrets, environments] = await Promise.all([
+      secretsService.listForUser(projectId, userId),
+      prisma.environment.findMany({
+        where: { projectId },
+        select: { id: true, filePath: true, name: true },
+      }),
+    ]);
 
-    const environments = await prisma.environment.findMany({
-      where: { projectId },
-      select: { id: true, filePath: true, name: true },
-    });
     const envById = new Map(
       environments.map((e: { id: string; filePath: string; name: string }) => [e.id, e]),
     );
 
-    // Fetch environmentId per secret (non-nullable after migration)
-    const secretEnvMap = await prisma.secret.findMany({
-      where: { projectId },
-      select: { id: true, environmentId: true },
-    });
-    const envIdBySecretId = new Map(
-      secretEnvMap.map((s: { id: string; environmentId: string }) => [s.id, s.environmentId]),
-    );
-
     const result = secrets.map(s => {
-      const envId = envIdBySecretId.get(s.id)!;
-      const env = envById.get(envId);
+      const env = envById.get(s.environmentId);
       return {
         ...s,
         filePath: env?.filePath ?? '.env',

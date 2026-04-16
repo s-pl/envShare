@@ -22,17 +22,6 @@ const COOKIE_OPTS = {
 const registerSchema = z.object({
   email: z.string().email(),
   password: z.string().min(12, "Password must be at least 12 characters"),
-  name: z.string().min(2),
-  /**
-   * GDPR Art. 7 — explicit, informed consent is required before we may process
-   * the user's personal data. The frontend presents the Privacy Policy link and
-   * requires this checkbox to be ticked before the form can be submitted.
-   */
-  consent: z.literal(true, {
-    errorMap: () => ({
-      message: "You must accept the Privacy Policy to create an account.",
-    }),
-  }),
 });
 
 const loginSchema = z.object({
@@ -57,12 +46,7 @@ authRouter.post(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const body = registerSchema.parse(req.body);
-      const user = await authService.register(
-        body.email,
-        body.password,
-        body.name,
-        body.consent, // GDPR Art. 7 consent flag
-      );
+      const user = await authService.register(body.email, body.password);
       res.status(201).json({ user });
     } catch (err) {
       next(err);

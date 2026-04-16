@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { prisma } from '../utils/prisma';
+import { ROLE_WEIGHT, Role } from '../utils/roles';
 
 export interface AuthRequest extends Request {
   user?: { id: string; email: string };
@@ -30,9 +31,7 @@ export function authenticate(req: AuthRequest, res: Response, next: NextFunction
  * Middleware to verify that the authenticated user has access to a project.
  * Attaches req.projectMember for downstream role checks.
  */
-export function requireProjectAccess(minRole: 'VIEWER' | 'DEVELOPER' | 'ADMIN' = 'VIEWER') {
-  const roleWeight: Record<string, number> = { VIEWER: 0, DEVELOPER: 1, ADMIN: 2 };
-
+export function requireProjectAccess(minRole: Role = 'VIEWER') {
   return async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
     const projectId = req.params.projectId || req.body.projectId;
     if (!projectId) {
@@ -49,7 +48,7 @@ export function requireProjectAccess(minRole: 'VIEWER' | 'DEVELOPER' | 'ADMIN' =
       return;
     }
 
-    if (roleWeight[member.role] < roleWeight[minRole]) {
+    if ((ROLE_WEIGHT[member.role as Role] ?? -1) < ROLE_WEIGHT[minRole]) {
       res.status(403).json({ error: `Requires ${minRole} role or higher`, code: 'FORBIDDEN_ROLE' });
       return;
     }

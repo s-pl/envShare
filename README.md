@@ -1,35 +1,43 @@
 <div align="center">
+<br>
 
 # envShare
 
-**Self-hosted secrets management for development teams.**
+**Self-hosted secret management for development teams.**
 
-Stop committing `.env` files to Git. Stop sending secrets over Slack.  
-envShare encrypts every variable at rest and lets each developer pull exactly what they need.
+Stop committing `.env` files to Git. Stop sending secrets over Slack.<br>
+envShare encrypts every variable at rest and gives each developer exactly what they need.
+
+<br>
 
 [![Node.js](https://img.shields.io/badge/Node.js-20+-339933?style=flat-square&logo=node.js&logoColor=white)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.3-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?style=flat-square&logo=postgresql&logoColor=white)](https://www.postgresql.org)
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=flat-square&logo=docker&logoColor=white)](https://docs.docker.com/compose)
-[![AES-256-GCM](https://img.shields.io/badge/Encryption-AES--256--GCM-6366f1?style=flat-square&logo=letsencrypt&logoColor=white)](SECURITY.md)
+[![Encryption](https://img.shields.io/badge/Encryption-AES--256--GCM-6366f1?style=flat-square)](SECURITY.md)
 [![License](https://img.shields.io/badge/License-MIT-22c55e?style=flat-square)](LICENSE)
 
+<br>
+
+[Deploy](#deploy) &nbsp;·&nbsp; [Install CLI](#install-the-cli) &nbsp;·&nbsp; [Quick Start](#quick-start) &nbsp;·&nbsp; [CLI Reference](#cli-reference) &nbsp;·&nbsp; [Security](SECURITY.md) &nbsp;·&nbsp; [Docs](wiki/Home.md)
+
+<br>
 </div>
 
 ---
 
-## What it does
+## Overview
 
-envShare is a **self-hosted** alternative to Doppler or 1Password Secrets. You run the server on your own infrastructure — your keys never leave your control.
+envShare is a **self-hosted** alternative to Doppler or 1Password Secrets. You run the server — your keys never leave your infrastructure.
 
-Each secret can be one of two types:
+Each secret has one of two modes:
 
-| Type | Description | Examples |
-|------|-------------|---------|
-| **Shared** | One encrypted value for the whole team. Everyone pulls the same thing. | `DATABASE_URL`, `REDIS_URL`, `STRIPE_PUBLIC_KEY` |
-| **Personal** | Each developer keeps their own encrypted copy. | `AWS_ACCESS_KEY_ID`, `STRIPE_SECRET_KEY`, local DB passwords |
+| Mode | Who gets the value | Typical use cases |
+|------|--------------------|-------------------|
+| **Shared** | One encrypted value, equal for all team members | `DATABASE_URL`, `REDIS_URL`, `STRIPE_PUBLIC_KEY` |
+| **Personal** | Each developer stores their own encrypted copy | `AWS_ACCESS_KEY_ID`, local database passwords |
 
-All values are encrypted with **AES-256-GCM**. The master encryption key never touches the database — lose it and the data is unrecoverable.
+All values are encrypted with **AES-256-GCM**. The master encryption key never touches the database — lose it and the data is permanently unrecoverable.
 
 ---
 
@@ -37,13 +45,13 @@ All values are encrypted with **AES-256-GCM**. The master encryption key never t
 
 ```mermaid
 flowchart TB
-    subgraph dev["👩‍💻  Developer workstation"]
+    subgraph dev["Developer workstation"]
         direction LR
         CLI["envshare CLI\n─────────────\nstandalone binary\nno runtime needed"]
-        DOTENV[".env files\n(mode 0600)"]
+        DOTENV[".env files\nmode 0600"]
     end
 
-    subgraph server["🖥️  Server  ·  Docker Compose"]
+    subgraph server["Server  ·  Docker Compose"]
         direction TB
         Caddy["Caddy\n─────────────\nTLS termination\nauto-certificate\nreverse proxy"]
         API["Backend API\n─────────────\nExpress · Prisma\nport 3000 internal"]
@@ -53,9 +61,9 @@ flowchart TB
         API -->|"connection pool"| DB
     end
 
-    GH["GitHub Releases\n(self-update)"]
+    GH["GitHub Releases\nself-update"]
 
-    CLI -->|"HTTPS · /api/v1/*"| Caddy
+    CLI -->|"HTTPS  /api/v1/*"| Caddy
     CLI <-->|"read / write"| DOTENV
     CLI -.->|"envshare update"| GH
 
@@ -73,25 +81,25 @@ flowchart TB
 
 ## Encryption key hierarchy
 
-Three layers ensure that a database breach alone is useless to an attacker. The master key is never stored — it exists only as an environment variable on the server (ideally in a KMS).
+Three layers ensure that a database breach alone is useless to an attacker. The master key is never stored anywhere — it exists only as a server environment variable.
 
 ```mermaid
 flowchart TD
-    MK["🔑  MASTER_ENCRYPTION_KEY\n─────────────────────────────────────\nenv var on server  ·  never in database\n32 random bytes  ·  store in KMS"]
+    MK["MASTER_ENCRYPTION_KEY\n─────────────────────────────────────\nenv var on server  ·  never in database\n32 random bytes  ·  store in KMS"]
 
     subgraph proj["Per-project  (stored encrypted in DB)"]
-        PK["🗝️  Project Key\n─────────────────────────────\n32 random bytes on project creation\nwrapped by master key → AES-256-GCM\nstored as JSON in projects.encryptedKey"]
+        PK["Project Key\n─────────────────────────────\n32 random bytes on project creation\nwrapped by master key  ·  AES-256-GCM\nstored as JSON in projects.encryptedKey"]
     end
 
     subgraph secrets["Per-secret  (stored in DB — encrypted)"]
         direction LR
-        KN["📝  Key name\nAES-256-GCM\nrandom 128-bit IV"]
-        SV["🌐  Shared value\nAES-256-GCM\nrandom 128-bit IV\none per secret"]
-        PV["👤  Personal value\nAES-256-GCM\nrandom 128-bit IV\none per user"]
-        KH["#️⃣  Key hash\nHMAC-SHA256\ndeduplication only\nno reversibility"]
+        KN["Key name\nAES-256-GCM\nrandom 128-bit IV"]
+        SV["Shared value\nAES-256-GCM\nrandom 128-bit IV\none per secret"]
+        PV["Personal value\nAES-256-GCM\nrandom 128-bit IV\none per user"]
+        KH["Key hash\nHMAC-SHA256\ndeduplication only\nnot reversible"]
     end
 
-    MK -->|"unwrapKey()  →  AES-256-GCM decrypt"| PK
+    MK -->|"unwrapKey()  AES-256-GCM decrypt"| PK
     PK -->|"encrypt(keyName, projectKey)"| KN
     PK -->|"encrypt(value, projectKey)"| SV
     PK -->|"encrypt(value, projectKey)"| PV
@@ -107,13 +115,16 @@ flowchart TD
     style secrets fill:#0f172a,stroke:#334155,color:#e2e8f0
 ```
 
-> **Key rotation:** rotating the master key only requires re-wrapping project keys (fast). Secrets themselves do not need to be re-encrypted.
+> **Key rotation** — rotating the master key only requires re-wrapping project keys (fast, no re-encryption of individual secrets).
 
 ---
 
 ## Authentication flow
 
-Access tokens live for 15 minutes in memory only. Refresh tokens are single-use and stored as **SHA-256 hashes** in the database — a breach exposes only hashes, not usable tokens.
+<details>
+<summary>Expand sequence diagram</summary>
+
+Access tokens live **15 minutes** in memory only. Refresh tokens are single-use and stored as **SHA-256 hashes** — a database breach exposes only hashes, not usable tokens.
 
 ```mermaid
 sequenceDiagram
@@ -122,36 +133,41 @@ sequenceDiagram
     participant API as Backend API
     participant DB as PostgreSQL
 
-    Note over CLI,DB: ── Initial login ───────────────────────────────────
+    Note over CLI,DB: Initial login
     Dev->>CLI: envshare login
-    CLI->>API: POST /auth/login  {email, password}  x-client: cli
+    CLI->>API: POST /auth/login  {email, password}
     API->>DB: findUnique(email) — check lockout state
     API->>API: bcrypt.compare(password, hash) — constant-time
     API->>DB: INSERT refresh_token  {token: SHA256(raw), expiresAt, ip, ua}
-    API->>DB: INSERT audit_log  {action: AUTH_LOGIN_SUCCESS, ip}
+    API->>DB: INSERT audit_log  {AUTH_LOGIN_SUCCESS, ip}
     API-->>CLI: {accessToken (JWT 15min), refreshToken (raw 80-hex)}
     CLI->>CLI: store refreshToken in config.json
     CLI->>CLI: keep accessToken in memory only
 
-    Note over CLI,DB: ── Normal API request ──────────────────────────────
-    CLI->>API: GET /api/v1/secrets/:id  Authorization: Bearer <accessToken>
-    API-->>CLI: 200 OK — secret data
+    Note over CLI,DB: Normal API request
+    CLI->>API: GET /api/v1/secrets/:id  Authorization: Bearer token
+    API-->>CLI: 200 OK
 
-    Note over CLI,DB: ── Access token expired (15 min) ───────────────────
+    Note over CLI,DB: Access token expired (15 min)
     CLI->>API: POST /auth/refresh  {refreshToken: raw}
-    API->>DB: findUnique({token: SHA256(raw)}) — lookup by hash
+    API->>DB: findUnique({token: SHA256(raw)})
     API->>DB: DELETE old token — single-use enforcement
-    API->>DB: INSERT new_token  {token: SHA256(newRaw), ...}
+    API->>DB: INSERT new_token  {token: SHA256(newRaw)}
     API-->>CLI: {new accessToken, new refreshToken}
-    CLI->>CLI: update config.json with new refreshToken
-    CLI->>API: ↩ retry original request with new accessToken
+    CLI->>CLI: update config.json
+    CLI->>API: retry original request
     API-->>CLI: 200 OK
 ```
+
+</details>
 
 ---
 
 ## Push / pull flow
 
+<details>
+<summary>Expand sequence diagram</summary>
+
 ```mermaid
 sequenceDiagram
     actor Dev as Developer
@@ -159,64 +175,67 @@ sequenceDiagram
     participant API as Backend API
     participant DB as PostgreSQL
 
-    Note over Dev,DB: ── Push ────────────────────────────────────────────
-    Dev->>CLI: envshare push [file] [--all] [--env <name>]
-    CLI->>CLI: scan for .env files (depth ≤ 10, skips symlinks)
-    CLI->>CLI: parse .env — classify shared / personal by @shared tag & patterns
+    Note over Dev,DB: Push
+    Dev->>CLI: envshare push [file] [--all] [--env name]
+    CLI->>CLI: scan for .env files (depth 10, skips symlinks)
+    CLI->>CLI: parse .env — classify shared / personal
     CLI->>CLI: filter ignored keys from .envshare.config.json
 
-    loop batches of 10 secrets
+    loop batches of 10 secrets (up to 3 concurrent)
         CLI->>API: POST /sync/:projectId/push  {secrets[], filePath, environmentName}
         API->>DB: getOrCreate(environment, filePath)
         note right of API: single DB transaction
+        API->>DB: findMany(keyHash IN [...]) — batch lookup
         loop each secret in batch
-            API->>DB: findUnique(projectId + keyHash)
             alt new secret
                 API->>DB: INSERT secret  {encryptedKey, keyHash, environmentId}
             else existing secret
-                API->>DB: UPDATE secret  (environmentId, isShared if changed)
+                API->>DB: UPDATE secret  (isShared if changed)
             end
-            API->>DB: UPSERT shared_value / personal_value  (encrypted)
-            API->>DB: INSERT secret_version  {action, actor, version}
+            API->>DB: UPSERT value  (encrypted)
+            API->>DB: INSERT secret_version
         end
         API->>DB: INSERT audit_log  {SECRETS_PUSHED, actor, count}
         API-->>CLI: {created[], updated[], sharedUpdated[]}
-        CLI-->>Dev: ████████████ 10/10  progress bar
+        CLI-->>Dev: progress bar
     end
-    CLI-->>Dev: ✔ .env  —  +8 new, 3 updated, 5 shared
 
-    Note over Dev,DB: ── Pull ────────────────────────────────────────────
-    Dev->>CLI: envshare pull [--env <name>] [--output <path>]
+    Note over Dev,DB: Pull
+    Dev->>CLI: envshare pull [--env name] [--output path]
     CLI->>API: GET /sync/:projectId/pull[?env=staging]
-    API->>DB: SELECT secrets WHERE projectId = ?  (+ personal values for this user)
-    API->>DB: SELECT environments WHERE projectId = ?
+    API->>DB: SELECT secrets  (+ personal values for this user)  [parallel]
+    API->>DB: SELECT environments                                 [parallel]
     API->>API: decrypt all values with project key
     API->>API: personal value overrides shared value (if both exist)
     API-->>CLI: [{key, value, filePath, environmentName}]
     CLI->>CLI: group secrets by filePath
     loop each output file
         CLI->>CLI: path traversal check (refuse writes outside cwd)
-        CLI->>CLI: writeFileSync(path, content, {mode: 0o600})
+        CLI->>CLI: writeFileSync(path, content, mode 0600)
     end
-    CLI-->>Dev: ✔ .env (8 vars)  ✔ .env.staging (4 vars)
 ```
+
+</details>
 
 ---
 
 ## Database schema
+
+<details>
+<summary>Expand ER diagram</summary>
 
 ```mermaid
 erDiagram
     direction LR
 
     User {
-        string  id              PK
-        string  email           "unique"
-        string  passwordHash    "bcrypt 12 rounds"
-        string  name
-        datetime consentedAt    "GDPR Art.7 consent"
-        int     failedLoginAttempts
-        datetime lockedUntil   "ISO 27001 A.9.4.2"
+        string   id                 PK
+        string   email              "unique"
+        string   passwordHash       "bcrypt 12 rounds"
+        string   name
+        datetime consentedAt        "GDPR Art.7 consent"
+        int      failedLoginAttempts
+        datetime lockedUntil        "ISO 27001 A.9.4.2"
     }
 
     Project {
@@ -234,11 +253,10 @@ erDiagram
     }
 
     Environment {
-        string  id        PK
-        string  projectId FK
-        string  name      "human label: production, staging"
-        string  filePath  ".env, .env.staging, apps/api/.env"
-        string  description
+        string  id          PK
+        string  projectId   FK
+        string  name        "production, staging, etc."
+        string  filePath    ".env, .env.staging, apps/api/.env"
     }
 
     Secret {
@@ -253,17 +271,17 @@ erDiagram
     }
 
     UserSecretValue {
-        string id            PK
-        string secretId      FK
-        string userId        FK
+        string id             PK
+        string secretId       FK
+        string userId         FK
         string encryptedValue "AES-256-GCM personal value"
     }
 
     SecretVersion {
-        string id        PK
-        string secretId  FK
-        string userId    FK
-        string action    "created | updated | made_shared | made_personal"
+        string id       PK
+        string secretId FK
+        string userId   FK
+        string action   "created | updated | made_shared | made_personal"
         int    version
     }
 
@@ -273,7 +291,6 @@ erDiagram
         string   userId    FK
         datetime expiresAt
         string   ipAddress "ISO 27001 A.12.4"
-        string   userAgent
     }
 
     AuditLog {
@@ -283,20 +300,21 @@ erDiagram
         string   resourceType
         string   resourceId
         json     metadata
-        string   ipAddress
         datetime createdAt
     }
 
-    User           ||--o{ ProjectMember  : "belongs to"
-    Project        ||--o{ ProjectMember  : "has"
-    Project        ||--o{ Environment    : "has"
-    Project        ||--o{ Secret         : "owns"
-    Environment    |o--o{ Secret         : "groups"
+    User           ||--o{ ProjectMember   : "belongs to"
+    Project        ||--o{ ProjectMember   : "has"
+    Project        ||--o{ Environment     : "has"
+    Project        ||--o{ Secret          : "owns"
+    Environment    |o--o{ Secret          : "groups"
     Secret         ||--o{ UserSecretValue : "personal values"
     User           ||--o{ UserSecretValue : "owns"
-    Secret         ||--o{ SecretVersion  : "history"
-    User           ||--o{ RefreshToken   : "sessions"
+    Secret         ||--o{ SecretVersion   : "history"
+    User           ||--o{ RefreshToken    : "sessions"
 ```
+
+</details>
 
 ---
 
@@ -306,11 +324,18 @@ erDiagram
 
 **1. Generate secrets**
 
+Run each command independently — two different keys are required:
+
 ```bash
-# Run each command separately — two different keys
-node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"  # → MASTER_ENCRYPTION_KEY
-node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"  # → JWT_SECRET
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+# copy output → MASTER_ENCRYPTION_KEY
+
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+# copy output → JWT_SECRET
 ```
+
+> [!IMPORTANT]
+> `MASTER_ENCRYPTION_KEY` is the root of all encryption. Back it up to a KMS or encrypted vault before deploying. Losing it makes all stored secrets **permanently unrecoverable** — there is no reset path.
 
 **2. Create `.env` in the project root**
 
@@ -321,21 +346,22 @@ MASTER_ENCRYPTION_KEY=<64-char hex>
 ALLOWED_ORIGINS=https://your-frontend.com
 ```
 
-> **Warning:** `MASTER_ENCRYPTION_KEY` is the root of all encryption. Back it up to a KMS or encrypted vault. Losing it makes all stored secrets permanently unrecoverable.
-
 **3. Start**
 
 ```bash
 docker compose up -d
 ```
 
-The API is available on port `3001`. Migrations run automatically on startup.
+The API is available on port `3001`. Database migrations run automatically on startup.
 
-**4. HTTPS with automatic certificates (Caddy)**
+**4. HTTPS with automatic TLS (Caddy)**
 
 ```bash
-ENVSHARE_DOMAIN=secrets.yourdomain.com docker compose -f docker-compose.https.yml up -d
+ENVSHARE_DOMAIN=secrets.yourdomain.com \
+  docker compose -f docker-compose.https.yml up -d
 ```
+
+Caddy obtains and renews certificates automatically via Let's Encrypt.
 
 ---
 
@@ -343,24 +369,39 @@ ENVSHARE_DOMAIN=secrets.yourdomain.com docker compose -f docker-compose.https.ym
 
 The CLI is a standalone binary — no Node.js required on developer machines.
 
-**macOS / Linux (Homebrew)**
+<details>
+<summary>macOS / Linux — Homebrew</summary>
+
 ```bash
 brew install s-pl/envshare/envshare
 ```
 
-**Windows (Scoop)**
+</details>
+
+<details>
+<summary>Windows — Scoop</summary>
+
 ```powershell
 scoop bucket add envshare https://github.com/s-pl/scoop-envshare
 scoop install envshare
 ```
 
-**Linux (manual)**
+</details>
+
+<details>
+<summary>Linux — manual install</summary>
+
 ```bash
-sudo curl -fsSL https://github.com/s-pl/envShare/releases/latest/download/envshare-linux-x64 \
-  -o /usr/local/bin/envshare && sudo chmod +x /usr/local/bin/envshare
+sudo curl -fsSL \
+  https://github.com/s-pl/envShare/releases/latest/download/envshare-linux-x64 \
+  -o /usr/local/bin/envshare \
+  && sudo chmod +x /usr/local/bin/envshare
 ```
 
-Keep it up to date:
+</details>
+
+Self-update once installed:
+
 ```bash
 envshare update
 ```
@@ -379,15 +420,18 @@ envshare url https://secrets.yourcompany.com
 envshare register
 envshare login
 
-# Create a project and link your repo
+# Create a project and link this directory
 envshare project create
-cd my-app
 envshare init
 
-# Push your .env (interactive variable selector, or use --all in CI)
+# Push your .env (interactive variable selector)
 envshare push
-envshare push --all          # non-interactive, CI-friendly
-envshare push --dry-run      # preview what would be uploaded
+
+# For CI pipelines — push all variables without prompts
+envshare push --all
+
+# Preview what would be uploaded without sending anything
+envshare push --dry-run
 
 # Invite teammates
 envshare project invite alice@company.com --role DEVELOPER
@@ -406,20 +450,20 @@ envshare init    # select your project from the list
 envshare pull    # writes .env files with mode 0600
 ```
 
-Any personal secrets not yet set will appear as empty with a hint:
-
-```env
-STRIPE_SECRET_KEY=   # not set — run: envshare set STRIPE_SECRET_KEY "sk_test_..."
-```
+> [!TIP]
+> Any personal secrets not yet set will appear as empty with a hint in the generated file:
+> ```env
+> STRIPE_SECRET_KEY=   # pending — run: envshare set STRIPE_SECRET_KEY "sk_test_..."
+> ```
 
 ---
 
 ## Marking secrets as shared
 
-**Inline in `.env`** — add `# @shared` to any line:
+**Inline in `.env`** — append `# @shared` to any line:
 
 ```env
-# Shared: everyone on the team gets the same value
+# Shared: the whole team pulls the same value
 DATABASE_URL=postgres://user:pass@host/db   # @shared
 REDIS_URL=redis://host:6379                 # @shared
 
@@ -428,35 +472,39 @@ AWS_ACCESS_KEY_ID=AKIA...
 STRIPE_SECRET_KEY=sk_test_...
 ```
 
-**Global rules in `.envshare.config.json`** — committed to version control:
+**Project-wide rules in `.envshare.config.json`** — commit this file to version control:
 
 ```json
 {
   "defaultFile": ".env",
-  "sharedKeys":    ["NODE_ENV", "PORT"],
+  "sharedKeys":     ["NODE_ENV", "PORT"],
   "sharedPatterns": ["*_URL", "*_HOST", "DB_*"],
-  "ignoredKeys":   ["LOCAL_OVERRIDE"]
+  "ignoredKeys":    ["LOCAL_OVERRIDE"]
 }
 ```
 
-Pattern matching is glob-style (`*` = any chars, `?` = one char) and case-insensitive.
+Pattern syntax: `*` matches any number of characters, `?` matches exactly one. Matching is case-insensitive.
 
 ---
 
 ## Roles
 
-Roles are **per-project** — the same user can be Admin on one project and Viewer on another.
+Roles are **per-project** — the same user can be ADMIN on one project and VIEWER on another.
 
-| Permission | Viewer | Developer | Admin |
+| Permission | VIEWER | DEVELOPER | ADMIN |
 |------------|:------:|:---------:|:-----:|
-| View secret names and pull values | ✓ | ✓ | ✓ |
+| Pull secrets and view secret names | ✓ | ✓ | ✓ |
 | View secret version history | ✓ | ✓ | ✓ |
+| List project members | ✓ | ✓ | ✓ |
 | Push secrets | | ✓ | ✓ |
 | Set personal values | | ✓ | ✓ |
-| Create / manage environments | | ✓ | ✓ |
+| Update shared values | | ✓ | ✓ |
+| Create environments | | ✓ | ✓ |
 | Invite members | | | ✓ |
 | Change member roles | | | ✓ |
+| Remove members | | | ✓ |
 | Delete secrets | | | ✓ |
+| Delete environments | | | ✓ |
 | View audit log | | | ✓ |
 | Delete project | | | ✓ |
 
@@ -468,70 +516,70 @@ Roles are **per-project** — the same user can be Admin on one project and View
 
 | Command | Description |
 |---------|-------------|
-| `envshare url [url]` | Get or set the backend API URL |
-| `envshare register` | Create a new account |
-| `envshare login` | Authenticate and store tokens |
-| `envshare init` | Link the current directory to a project |
-| `envshare version` | Show version, server, and auth status |
-| `envshare update` | Download and install the latest release |
+| <kbd>envshare url [url]</kbd> | Get or set the backend API URL |
+| <kbd>envshare register</kbd> | Create a new account |
+| <kbd>envshare login</kbd> | Authenticate and store tokens |
+| <kbd>envshare init</kbd> | Link the current directory to a project |
+| <kbd>envshare version</kbd> | Show CLI version, server version, and auth status |
+| <kbd>envshare update</kbd> | Download and install the latest release |
 
-### Daily workflow
+### Secrets — daily workflow
 
 | Command | Description |
 |---------|-------------|
-| `envshare push` | Upload `.env` — interactive variable selector |
-| `envshare push --all` | Push every variable without prompts (CI-friendly) |
-| `envshare push --yes` | Alias for `--all` |
-| `envshare push --env staging` | Tag secrets with an environment name |
-| `envshare push --dry-run` | Preview what would be pushed without uploading |
-| `envshare pull` | Download secrets and write `.env` files |
-| `envshare pull --env staging` | Pull only a specific environment |
-| `envshare pull --output .env` | Write everything to a single file |
-| `envshare set <KEY> <value>` | Set your personal value for a secret |
+| <kbd>envshare push</kbd> | Upload `.env` — interactive variable selector |
+| <kbd>envshare push --all</kbd> | Push every variable without prompts (CI-friendly) |
+| <kbd>envshare push --yes</kbd> | Alias for `--all` |
+| <kbd>envshare push --env staging</kbd> | Tag secrets with an environment name |
+| <kbd>envshare push --dry-run</kbd> | Preview what would be pushed without uploading |
+| <kbd>envshare pull</kbd> | Download secrets and write `.env` files |
+| <kbd>envshare pull --env staging</kbd> | Pull only the specified environment |
+| <kbd>envshare pull --output .env</kbd> | Write everything to a single file |
+| <kbd>envshare set KEY value</kbd> | Set your personal value for a key |
+| <kbd>envshare set KEY value --shared</kbd> | Update the shared value for a key |
 
 ### Inspect & manage
 
 | Command | Description |
 |---------|-------------|
-| `envshare list` | List all secret names for the current project |
-| `envshare history <KEY>` | Full version history for a secret |
-| `envshare delete <KEY>` | Delete a secret (Admin only) |
-| `envshare delete <KEY> --force` | Delete without confirmation prompt |
-| `envshare audit` | Project audit log (Admin only) |
+| <kbd>envshare list</kbd> | List all secret names in the current project |
+| <kbd>envshare history KEY</kbd> | Full version history for a secret |
+| <kbd>envshare delete KEY</kbd> | Delete a secret (ADMIN only, asks for confirmation) |
+| <kbd>envshare delete KEY --force</kbd> | Delete without confirmation |
+| <kbd>envshare audit</kbd> | Project audit log (ADMIN only) |
+| <kbd>envshare audit --limit 100</kbd> | Show more entries |
+| <kbd>envshare audit --from 2026-01-01 --to 2026-12-31</kbd> | Filter by date range |
+| <kbd>envshare audit --action SECRETS_PUSHED</kbd> | Filter by action type |
+| <kbd>envshare audit --json</kbd> | Machine-readable output |
 
 ### Team management
 
 | Command | Description |
 |---------|-------------|
-| `envshare project create` | Create a new project |
-| `envshare project invite <email> --role <role>` | Invite a team member |
-| `envshare project members` | List current members and their roles |
-| `envshare project set-role <email> <role>` | Change a member's role |
-| `envshare project remove <email>` | Remove a member from the project |
-
-### Interactive UI
-
-```bash
-envshare ui   # full-screen terminal UI — browse secrets, push, manage team
-```
+| <kbd>envshare project create</kbd> | Create a new project |
+| <kbd>envshare project invite email --role ROLE</kbd> | Invite a team member (ADMIN \| DEVELOPER \| VIEWER) |
+| <kbd>envshare project members</kbd> | List current members and their roles |
+| <kbd>envshare project set-role email ROLE</kbd> | Change a member's role |
+| <kbd>envshare project remove email</kbd> | Remove a member from the project |
+| <kbd>envshare project delete</kbd> | Delete the project and all its secrets (ADMIN only) |
 
 ---
 
 ## Security
 
-| Control | Detail |
-|---------|--------|
+| Control | Implementation |
+|---------|----------------|
 | **Encryption at rest** | AES-256-GCM with a random 128-bit IV per secret. Authentication tag prevents silent tampering. |
-| **Master key** | Never stored in the database. Server refuses to start without it. |
+| **Master key** | Never stored in the database. The server refuses to start without it. |
 | **Project key** | 32 random bytes per project, wrapped by the master key and stored encrypted. |
-| **Passwords** | bcrypt with 12 rounds. |
+| **Passwords** | bcrypt with 12 rounds. Minimum 12 characters enforced. |
 | **Access tokens** | 15-minute expiry. Kept in memory only — never written to disk. |
-| **Refresh tokens** | Single-use, rotated on every refresh. Stored as **SHA-256 hashes** in the database — a breach exposes hashes, not usable tokens. |
-| **Startup validation** | Server exits immediately if `JWT_SECRET` (<32 bytes) or `MASTER_ENCRYPTION_KEY` (not 64 hex chars) are misconfigured. |
-| **Rate limiting** | 20 requests / 15 min on auth endpoints. Global 500 req / 15 min limit. |
+| **Refresh tokens** | Single-use, rotated on every refresh. Stored as SHA-256 hashes — a breach exposes hashes, not usable tokens. |
+| **Startup validation** | Server exits immediately if `JWT_SECRET` or `MASTER_ENCRYPTION_KEY` are missing or malformed. |
+| **Rate limiting** | 20 requests / 15 min on auth endpoints. 500 req / 15 min global limit. |
 | **Account lockout** | Locked for 30 minutes after 10 consecutive failed login attempts. Persists across restarts. |
 | **Audit log** | Every push, pull, member change, and auth event is recorded with actor, IP, and timestamp (ISO 27001 A.12.4.1). |
-| **GDPR** | Audit logs auto-purged after 365 days. Consent timestamp recorded at registration (Art. 7). Right to erasure (Art. 17) immediately revokes all sessions. |
+| **GDPR** | Audit logs auto-purged after 365 days. Consent timestamp at registration (Art. 7). Right to erasure (Art. 17) revokes all sessions immediately. |
 | **Output file permissions** | `pull` writes `.env` files with mode `0600` (owner read/write only). Path traversal is rejected. |
 
 Full threat model and ISO 27001 control mapping: [SECURITY.md](SECURITY.md)
@@ -542,37 +590,40 @@ Full threat model and ISO 27001 control mapping: [SECURITY.md](SECURITY.md)
 
 | Variable | Required | Default | Description |
 |----------|:--------:|---------|-------------|
-| `MASTER_ENCRYPTION_KEY` | ✓ | — | 64-char hex (32 bytes). Root encryption key. **Store in KMS, never commit.** |
+| `MASTER_ENCRYPTION_KEY` | ✓ | — | 64-char hex (32 bytes). Root encryption key. **Store in a KMS, never commit.** |
 | `JWT_SECRET` | ✓ | — | Min 32 bytes. Signs access tokens. Rotation invalidates all active sessions. |
 | `DATABASE_URL` | ✓ | — | PostgreSQL connection string. |
-| `POSTGRES_PASSWORD` | ✓ | — | DB password (used by Docker Compose). |
-| `ALLOWED_ORIGINS` | ✓ | — | Comma-separated CORS origins, e.g. `https://app.com`. |
-| `PORT` | | `3000` | Port the backend listens on (inside Docker). |
+| `POSTGRES_PASSWORD` | ✓ | — | Database password (used by Docker Compose). |
+| `ALLOWED_ORIGINS` | ✓ | — | Comma-separated CORS origins, e.g. `https://app.yourcompany.com`. |
+| `PORT` | | `3000` | Port the backend listens on inside Docker. |
 | `NODE_ENV` | | `production` | Set to `development` for verbose error responses. |
-| `LOG_LEVEL` | | `info` | Winston log level: `debug`, `info`, `warn`, `error`. |
+| `LOG_LEVEL` | | `info` | Winston log level: `debug` \| `info` \| `warn` \| `error`. |
 | `AUDIT_LOG_RETENTION_DAYS` | | `365` | Days to retain audit log entries. Minimum recommended: `90`. |
-| `TRUST_PROXY` | | `false` | Set to `1` when behind a trusted reverse proxy (Caddy, nginx). |
+| `TRUST_PROXY` | | `false` | Set to `1` when running behind a trusted reverse proxy (Caddy, nginx). |
 | `TOKEN_CLEANUP` | | `true` | Set to `false` to disable automatic expired-token cleanup. |
-| `COOKIE_PATH` | | `/api/v1/auth` | Override refresh-token cookie path when API is served under a prefix. |
+| `COOKIE_PATH` | | `/api/v1/auth` | Override refresh-token cookie path when the API is served under a prefix. |
+
+> [!WARNING]
+> Never commit secrets to source control. Use a secrets manager or at minimum a `.env` file excluded from Git.
 
 ---
 
 ## Local files
 
-These files are created on developer machines and should not be committed to version control.
+These files are created on developer machines. Add them to `.gitignore` where noted.
 
-| File | Location | Purpose |
-|------|----------|---------|
-| `config.json` | `~/.config/envshare-nodejs/` | Stores API URL and auth tokens. |
-| `.envshare.json` | Project root | Links the directory to a project ID. Add to `.gitignore`. |
-| `.envshare.config.json` | Project root | Optional push config (shared patterns, ignored keys). **Safe to commit.** |
+| File | Location | Purpose | Commit? |
+|------|----------|---------|:-------:|
+| `config.json` | `~/.config/envshare-nodejs/` | Stores API URL and authentication tokens | — |
+| `.envshare.json` | Project root | Links the directory to a project ID | No |
+| `.envshare.config.json` | Project root | Push config: shared patterns, ignored keys | Yes |
 
 ---
 
 <div align="center">
 
-[![SECURITY.md](https://img.shields.io/badge/Read-Security%20Policy-6366f1?style=flat-square)](SECURITY.md)
-[![Wiki](https://img.shields.io/badge/Read-Full%20Docs-6366f1?style=flat-square)](wiki/Home.md)
+[![Security Policy](https://img.shields.io/badge/Read-Security%20Policy-6366f1?style=flat-square)](SECURITY.md)
+[![Full Docs](https://img.shields.io/badge/Read-Full%20Docs-6366f1?style=flat-square)](wiki/Home.md)
 [![User Guide](https://img.shields.io/badge/Read-User%20Guide-6366f1?style=flat-square)](wiki/User-Guide.md)
 
 </div>

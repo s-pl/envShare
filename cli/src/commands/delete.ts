@@ -6,9 +6,14 @@ import { readProjectLink } from '../config.js';
 import { successLine, failLine } from '../utils/brand.js';
 
 export const deleteCommand = new Command('delete')
-  .description('Delete a secret from the project (removes all personal values too)')
-  .argument('<key>', 'Secret key name to delete')
-  .option('-f, --force', 'Skip confirmation prompt')
+  .alias('rm')
+  .description('Delete a secret key and all its values (shared + personal) for every team member')
+  .argument('<key>', 'Secret key name to delete (e.g. OLD_API_KEY)')
+  .option('-f, --force', 'Skip the confirmation prompt')
+  .addHelpText('after', `
+Examples:
+  $ envshare delete OLD_API_KEY        Delete with confirmation
+  $ envshare rm OLD_API_KEY -f         Delete without asking (CI-friendly)`)
   .action(async (key: string, opts) => {
     const link = readProjectLink();
     if (!link) {

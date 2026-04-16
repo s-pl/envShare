@@ -42,10 +42,19 @@ function buildEnvFile(secrets: PulledSecret[], projectName: string): string {
 }
 
 export const pullCommand = new Command('pull')
-  .description('Download secrets and write .env files to their correct paths')
-  .option('-o, --output <file>', 'Write all secrets to a single file (ignores environment paths)')
-  .option('--all', 'Write each environment to its own file path (default when no --output)')
-  .option('--env <name>', 'Only pull secrets for this environment (e.g. staging)')
+  .alias('down')
+  .description('Download secrets from the server and write them to local .env files')
+  .option('-o, --output <file>', 'Write all secrets to a single file instead of per-environment files')
+  .option('--all', 'Write each environment to its own file path (default behavior)')
+  .option('--env <name>', 'Only pull secrets for a specific environment (e.g. staging)')
+  .addHelpText('after', `
+Examples:
+  $ envshare pull                  Download all environments to their .env files
+  $ envshare pull --env staging    Only download staging secrets
+  $ envshare pull -o .env.local    Write everything to a single file
+
+  Variables without a personal value are flagged with a warning comment.
+  Use "envshare set KEY value" to set your personal value for those.`)
   .action(async (opts) => {
     const link = readProjectLink();
     if (!link) {

@@ -1,12 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { Request, Response, NextFunction } from 'express';
+import { Response, NextFunction } from 'express';
 import { AuthRequest } from '../../middleware/auth';
 
-// Mock prisma
+// Mock prisma — requireSecretAccess now uses a single findUnique with nested project.members
 vi.mock('../../utils/prisma', () => ({
   prisma: {
     secret: { findUnique: vi.fn() },
-    projectMember: { findUnique: vi.fn() },
   },
 }));
 
@@ -40,17 +39,21 @@ function makeReqRes(userId: string, secretId: string, body = {}) {
   return { req, res, next };
 }
 
+function secretWithRole(role: string) {
+  return { projectId: 'p1', project: { members: [{ role }] } };
+}
+
+const secretNoMember = { projectId: 'p1', project: { members: [] } };
+
 beforeEach(() => {
   vi.clearAllMocks();
-  mockPrisma.secret.findUnique.mockResolvedValue({ id: 's1', projectId: 'p1' });
 });
 
 describe('RBAC: PATCH /:secretId/value', () => {
   it('allows DEVELOPER to set personal value', async () => {
-    mockPrisma.projectMember.findUnique.mockResolvedValue({ role: 'DEVELOPER' });
+    mockPrisma.secret.findUnique.mockResolvedValue(secretWithRole('DEVELOPER'));
     const { req, res, next } = makeReqRes('u1', 's1', { value: 'test' });
 
-    // find the route handler for PATCH /:secretId/value
     const layer = (secretsRouter as any).stack.find(
       (l: any) => l.route?.path === '/:secretId/value' && l.route?.methods?.patch,
     );
@@ -59,7 +62,7 @@ describe('RBAC: PATCH /:secretId/value', () => {
   });
 
   it('blocks VIEWER from setting personal value', async () => {
-    mockPrisma.projectMember.findUnique.mockResolvedValue({ role: 'VIEWER' });
+    mockPrisma.secret.findUnique.mockResolvedValue(secretWithRole('VIEWER'));
     const { req, res, next } = makeReqRes('u1', 's1', { value: 'test' });
 
     const layer = (secretsRouter as any).stack.find(
@@ -72,7 +75,7 @@ describe('RBAC: PATCH /:secretId/value', () => {
 
 describe('RBAC: DELETE /:secretId', () => {
   it('allows ADMIN to delete a secret', async () => {
-    mockPrisma.projectMember.findUnique.mockResolvedValue({ role: 'ADMIN' });
+    mockPrisma.secret.findUnique.mockResolvedValue(secretWithRole('ADMIN'));
     const { req, res, next } = makeReqRes('u1', 's1');
 
     const layer = (secretsRouter as any).stack.find(
@@ -83,7 +86,7 @@ describe('RBAC: DELETE /:secretId', () => {
   });
 
   it('blocks DEVELOPER from deleting a secret', async () => {
-    mockPrisma.projectMember.findUnique.mockResolvedValue({ role: 'DEVELOPER' });
+    mockPrisma.secret.findUnique.mockResolvedValue(secretWithRole('DEVELOPER'));
     const { req, res, next } = makeReqRes('u1', 's1');
 
     const layer = (secretsRouter as any).stack.find(
@@ -94,7 +97,7 @@ describe('RBAC: DELETE /:secretId', () => {
   });
 
   it('blocks VIEWER from deleting a secret', async () => {
-    mockPrisma.projectMember.findUnique.mockResolvedValue({ role: 'VIEWER' });
+    mockPrisma.secret.findUnique.mockResolvedValue(secretWithRole('VIEWER'));
     const { req, res, next } = makeReqRes('u1', 's1');
 
     const layer = (secretsRouter as any).stack.find(
@@ -107,7 +110,7 @@ describe('RBAC: DELETE /:secretId', () => {
 
 describe('RBAC: non-member', () => {
   it('returns FORBIDDEN for non-member access', async () => {
-    mockPrisma.projectMember.findUnique.mockResolvedValue(null);
+    mockPrisma.secret.findUnique.mockResolvedValue(secretNoMember);
     const { req, res, next } = makeReqRes('u1', 's1', { value: 'v' });
 
     const layer = (secretsRouter as any).stack.find(

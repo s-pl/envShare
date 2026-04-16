@@ -9,10 +9,17 @@ import { readProjectLink } from '../config.js';
 import { successLine } from '../utils/brand.js';
 
 export const setCommand = new Command('set')
-  .description('Set your personal value for a secret key')
+  .description('Set a personal or shared value for an existing secret key')
   .argument('<key>', 'Variable name (e.g. DATABASE_URL)')
-  .argument('<value>', 'Value to set')
-  .option('--shared', 'Update the shared value (syncs to everyone)')
+  .argument('<value>', 'Value to set (use quotes for values with spaces)')
+  .option('--shared', 'Update the shared value instead (visible to all team members)')
+  .addHelpText('after', `
+Examples:
+  $ envshare set DATABASE_URL "postgres://localhost/mydb"    Set your personal value
+  $ envshare set API_KEY "sk-..." --shared                   Update the shared value for everyone
+
+  Personal values override shared values in your .env when you pull.
+  The key must already exist — push your .env first to register new keys.`)
   .action(async (key: string, value: string, opts) => {
     const link = readProjectLink();
     if (!link) {

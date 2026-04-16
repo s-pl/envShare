@@ -43,8 +43,12 @@ function addToWindowsPath(dir: string): boolean {
 }
 
 export const installCommand = new Command('install')
-  .description('Install envshare to a system directory and add it to PATH')
-  .option('--dir <path>', 'Custom install directory')
+  .description('Copy the envshare binary to a permanent location and configure PATH')
+  .option('--dir <path>', 'Custom install directory (default: ~/.local/bin or %LOCALAPPDATA%)')
+  .addHelpText('after', `
+Examples:
+  $ envshare install                     Install to ~/.local/bin (Linux/macOS)
+  $ envshare install --dir /usr/local/bin`)
   .action((opts) => {
     const installDir: string = opts.dir || getDefaultInstallDir();
     const binaryName = getBinaryName();

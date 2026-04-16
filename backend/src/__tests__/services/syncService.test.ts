@@ -1,9 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+// Mock crypto so hashKey returns a predictable value in push tests
+vi.mock('../../utils/crypto', () => ({
+  encrypt: vi.fn().mockReturnValue({ encryptedData: 'enc', iv: 'iv', tag: 'tag' }),
+  hashKey: vi.fn().mockImplementation((key: string) => `hash_${key}`),
+  decrypt: vi.fn().mockReturnValue('decrypted'),
+}));
+
 // Mock prisma
 vi.mock('../../utils/prisma', () => {
   const tx = {
-    secret: { findUnique: vi.fn(), create: vi.fn(), update: vi.fn() },
+    secret: { findMany: vi.fn(), create: vi.fn(), update: vi.fn() },
     secretVersion: { create: vi.fn() },
     auditLog: { create: vi.fn() },
     userSecretValue: { upsert: vi.fn() },
@@ -12,7 +19,7 @@ vi.mock('../../utils/prisma', () => {
     prisma: {
       $transaction: vi.fn(async (fn: (client: typeof tx) => Promise<unknown>) => fn(tx)),
       secret: { findMany: vi.fn() },
-      environment: { findMany: vi.fn() },
+      environment: { findMany: vi.fn(), findFirst: vi.fn(), create: vi.fn(), upsert: vi.fn() },
       _tx: tx,
     },
   };
@@ -45,12 +52,14 @@ beforeEach(() => {
   mockPrisma.$transaction.mockImplementation(
     async (fn: (t: typeof tx) => Promise<unknown>) => fn(tx),
   );
+  // Default: environmentService.getOrCreate finds the production env
+  mockPrisma.environment.findFirst.mockResolvedValue({ id: 'env-prod' });
 });
 
 describe('syncService.push', () => {
   it('creates a new secret for an unknown key', async () => {
-    tx.secret.findUnique.mockResolvedValue(null);
-    tx.secret.create.mockResolvedValue({ id: 's1', sharedEncryptedValue: null, version: 1, isShared: false });
+    tx.secret.findMany.mockResolvedValue([]); // no existing secrets
+    tx.secret.create.mockResolvedValue({ id: 's1', keyHash: 'hash_NEW_KEY', sharedEncryptedValue: null, version: 1, isShared: false });
     tx.secret.update.mockResolvedValue({});
     tx.userSecretValue.upsert.mockResolvedValue({});
     tx.secretVersion.create.mockResolvedValue({});
@@ -63,7 +72,9 @@ describe('syncService.push', () => {
   });
 
   it('updates result for existing secret', async () => {
-    tx.secret.findUnique.mockResolvedValue({ id: 's1', environmentId: null, isShared: false, sharedEncryptedValue: null, version: 1 });
+    tx.secret.findMany.mockResolvedValue([
+      { id: 's1', keyHash: 'hash_OLD_KEY', environmentId: null, isShared: false, sharedEncryptedValue: null, version: 1 },
+    ]);
     tx.userSecretValue.upsert.mockResolvedValue({});
     tx.auditLog.create.mockResolvedValue({});
 
@@ -73,7 +84,9 @@ describe('syncService.push', () => {
   });
 
   it('encrypts and stores shared values inline (no secretsService call)', async () => {
-    tx.secret.findUnique.mockResolvedValue({ id: 's1', environmentId: null, isShared: true, sharedEncryptedValue: 'old', version: 1 });
+    tx.secret.findMany.mockResolvedValue([
+      { id: 's1', keyHash: 'hash_DB_URL', environmentId: null, isShared: true, sharedEncryptedValue: 'old', version: 1 },
+    ]);
     tx.secret.update.mockResolvedValue({});
     tx.secretVersion.create.mockResolvedValue({});
     tx.auditLog.create.mockResolvedValue({});
@@ -88,7 +101,9 @@ describe('syncService.push', () => {
   });
 
   it('tracks shared updates in result.sharedUpdated', async () => {
-    tx.secret.findUnique.mockResolvedValue({ id: 's1', environmentId: null, isShared: true, sharedEncryptedValue: 'old', version: 1 });
+    tx.secret.findMany.mockResolvedValue([
+      { id: 's1', keyHash: 'hash_DB_URL', environmentId: null, isShared: true, sharedEncryptedValue: 'old', version: 1 },
+    ]);
     tx.secret.update.mockResolvedValue({});
     tx.secretVersion.create.mockResolvedValue({});
     tx.auditLog.create.mockResolvedValue({});
@@ -98,7 +113,9 @@ describe('syncService.push', () => {
   });
 
   it('creates audit log entry', async () => {
-    tx.secret.findUnique.mockResolvedValue({ id: 's1', environmentId: null, isShared: false, sharedEncryptedValue: null, version: 1 });
+    tx.secret.findMany.mockResolvedValue([
+      { id: 's1', keyHash: 'hash_KEY', environmentId: null, isShared: false, sharedEncryptedValue: null, version: 1 },
+    ]);
     tx.userSecretValue.upsert.mockResolvedValue({});
     tx.auditLog.create.mockResolvedValue({});
 
@@ -109,10 +126,11 @@ describe('syncService.push', () => {
   });
 
   it('processes multiple entries', async () => {
-    tx.secret.findUnique
-      .mockResolvedValueOnce(null) // first key is new
-      .mockResolvedValueOnce({ id: 's2', environmentId: null, isShared: false, sharedEncryptedValue: null, version: 1 }); // second key exists
-    tx.secret.create.mockResolvedValue({ id: 's1', sharedEncryptedValue: null, version: 1, isShared: false });
+    // Only OLD exists; NEW is absent from findMany result
+    tx.secret.findMany.mockResolvedValue([
+      { id: 's2', keyHash: 'hash_OLD', environmentId: null, isShared: false, sharedEncryptedValue: null, version: 1 },
+    ]);
+    tx.secret.create.mockResolvedValue({ id: 's1', keyHash: 'hash_NEW', sharedEncryptedValue: null, version: 1, isShared: false });
     tx.userSecretValue.upsert.mockResolvedValue({});
     tx.secretVersion.create.mockResolvedValue({});
     tx.auditLog.create.mockResolvedValue({});
@@ -129,9 +147,8 @@ describe('syncService.push', () => {
 
 describe('syncService.pull', () => {
   it('returns secrets with filePath from environment', async () => {
-    const mockSecrets = [{ id: 's1', key: 'KEY', value: 'val', isShared: true, hasPersonalValue: false, version: 1, updatedAt: new Date() }];
+    const mockSecrets = [{ id: 's1', key: 'KEY', value: 'val', isShared: true, hasPersonalValue: false, version: 1, updatedAt: new Date(), environmentId: 'env1' }];
     (secretsService.listForUser as any).mockResolvedValue(mockSecrets);
-    mockPrisma.secret.findMany.mockResolvedValue([{ id: 's1', environmentId: 'env1' }]);
     mockPrisma.environment.findMany.mockResolvedValue([{ id: 'env1', filePath: '.env.staging', name: 'staging' }]);
 
     const result = await syncService.pull('proj1', 'u1');
@@ -140,9 +157,8 @@ describe('syncService.pull', () => {
   });
 
   it('defaults filePath to .env for secrets without environment', async () => {
-    const mockSecrets = [{ id: 's1', key: 'KEY', value: 'val', isShared: true, hasPersonalValue: false, version: 1, updatedAt: new Date() }];
+    const mockSecrets = [{ id: 's1', key: 'KEY', value: 'val', isShared: true, hasPersonalValue: false, version: 1, updatedAt: new Date(), environmentId: 'unknown' }];
     (secretsService.listForUser as any).mockResolvedValue(mockSecrets);
-    mockPrisma.secret.findMany.mockResolvedValue([{ id: 's1', environmentId: null }]);
     mockPrisma.environment.findMany.mockResolvedValue([]);
 
     const result = await syncService.pull('proj1', 'u1');
@@ -152,14 +168,10 @@ describe('syncService.pull', () => {
 
   it('filters by envFilter when provided', async () => {
     const mockSecrets = [
-      { id: 's1', key: 'KEY1', value: 'v1', isShared: true, hasPersonalValue: false, version: 1, updatedAt: new Date() },
-      { id: 's2', key: 'KEY2', value: 'v2', isShared: true, hasPersonalValue: false, version: 1, updatedAt: new Date() },
+      { id: 's1', key: 'KEY1', value: 'v1', isShared: true, hasPersonalValue: false, version: 1, updatedAt: new Date(), environmentId: 'e1' },
+      { id: 's2', key: 'KEY2', value: 'v2', isShared: true, hasPersonalValue: false, version: 1, updatedAt: new Date(), environmentId: 'e2' },
     ];
     (secretsService.listForUser as any).mockResolvedValue(mockSecrets);
-    mockPrisma.secret.findMany.mockResolvedValue([
-      { id: 's1', environmentId: 'e1' },
-      { id: 's2', environmentId: 'e2' },
-    ]);
     mockPrisma.environment.findMany.mockResolvedValue([
       { id: 'e1', filePath: '.env.staging', name: 'staging' },
       { id: 'e2', filePath: '.env.prod', name: 'production' },

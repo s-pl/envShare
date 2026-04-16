@@ -6,8 +6,12 @@ import { api, ApiError } from '../api.js';
 import { sectionHeader, successLine, failLine } from '../utils/brand.js';
 
 export const loginCommand = new Command('login')
-  .description('Authenticate with the envShare server')
+  .description('Log in to your envShare account and store session credentials locally')
   .option('--api-url <url>', 'API server URL (overrides config)')
+  .addHelpText('after', `
+Examples:
+  $ envshare login                            Interactive email + password prompt
+  $ envshare login --api-url https://s.co.io  Log in to a specific server`)
   .action(async (opts) => {
     if (opts.apiUrl) config.set('apiUrl', opts.apiUrl);
 

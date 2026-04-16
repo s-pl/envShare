@@ -4,7 +4,6 @@ import chalk from 'chalk';
 import { urlCommand }      from './commands/url.js';
 import { registerCommand } from './commands/register.js';
 import { loginCommand }    from './commands/login.js';
-import { orgsCommand }     from './commands/orgs.js';
 import { projectsCommand } from './commands/projects.js';
 import { initCommand }     from './commands/init.js';
 import { pushCommand }     from './commands/push.js';
@@ -22,24 +21,48 @@ import { ApiError }        from './api.js';
 const program = new Command();
 declare const __ENVSHARE_VERSION__: string | undefined;
 const cliVersion = typeof __ENVSHARE_VERSION__ !== 'undefined' ? __ENVSHARE_VERSION__ : '0.0.0-dev';
-program.name('envshare').description('envShare / Secrets management CLI').version(cliVersion);
+program
+  .name('envshare')
+  .description('Securely sync environment variables across your team')
+  .version(cliVersion);
 
-program.addCommand(versionCommand);
-program.addCommand(installCommand);
-program.addCommand(updateCommand);
-program.addCommand(urlCommand);
+// ── Auth ──────────────────────────────────────────────────────────────────────
 program.addCommand(registerCommand);
 program.addCommand(loginCommand);
-program.addCommand(orgsCommand);
+
+// ── Setup ─────────────────────────────────────────────────────────────────────
+program.addCommand(urlCommand);
 program.addCommand(projectsCommand);
 program.addCommand(initCommand);
+
+// ── Secrets ───────────────────────────────────────────────────────────────────
 program.addCommand(pushCommand);
 program.addCommand(pullCommand);
 program.addCommand(setCommand);
 program.addCommand(listCommand);
 program.addCommand(deleteCommand);
+
+// ── Audit & history ───────────────────────────────────────────────────────────
 program.addCommand(historyCommand);
 program.addCommand(auditCommand);
+
+// ── System ────────────────────────────────────────────────────────────────────
+program.addCommand(versionCommand);
+program.addCommand(installCommand);
+program.addCommand(updateCommand);
+
+// ── Custom help ───────────────────────────────────────────────────────────────
+program.addHelpText('after', `
+Getting started:
+  $ envshare url https://your-server.com    Connect to a server
+  $ envshare register                       Create an account
+  $ envshare login                          Log in
+  $ envshare project create                 Create a project
+  $ envshare init                           Link this directory to a project
+  $ envshare push                           Upload your .env
+  $ envshare pull                           Download secrets to .env files
+
+Tip: Most commands have aliases — run "envshare <command> --help" for details.`);
 
 void program.parseAsync(process.argv).catch((err: unknown) => {
   if (err instanceof ApiError) {

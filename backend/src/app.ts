@@ -12,7 +12,6 @@ const pkg = JSON.parse(readFileSync(join(__dirname, '..', 'package.json'), 'utf-
 
 import { authRouter } from "./routes/auth";
 import { projectsRouter } from "./routes/projects";
-import { organizationsRouter } from "./routes/organizations";
 import { secretsRouter } from "./routes/secrets";
 import { membersRouter } from "./routes/members";
 import { environmentsRouter } from "./routes/environments";
@@ -200,7 +199,6 @@ app.use("/api/v1/account", accountRouter);
 app.use("/api/v1/projects", projectsRouter);
 app.use("/api/v1/projects", membersRouter);
 app.use("/api/v1/projects/:projectId/environments", environmentsRouter);
-app.use("/api/v1/organizations", organizationsRouter);
 app.use("/api/v1/secrets", secretsRouter);
 app.use("/api/v1/sync", syncRouter);
 app.use("/api/v1/audit", auditRouter);

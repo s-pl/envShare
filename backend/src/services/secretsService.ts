@@ -19,6 +19,7 @@ export interface SecretView {
   comment?: string | null;
   version: number;
   updatedAt: Date;
+  environmentId: string;
 }
 
 export interface VersionView {
@@ -60,6 +61,7 @@ export const secretsService = {
         comment: s.comment,
         version: s.version,
         updatedAt: s.updatedAt,
+        environmentId: s.environmentId,
       };
     });
   },
@@ -148,13 +150,14 @@ export const secretsService = {
     await prisma.secret.delete({ where: { id: secretId } });
   },
 
-  async getHistory(secretId: string, projectId: string): Promise<VersionView[]> {
+  async getHistory(secretId: string, projectId: string, limit = 200): Promise<VersionView[]> {
     const projectKey = await getProjectKey(projectId);
 
     const versions = await prisma.secretVersion.findMany({
       where: { secretId },
       include: { user: { select: { email: true, name: true } } },
       orderBy: { version: 'desc' },
+      take: limit,
     });
 
     return versions.map((v) => {

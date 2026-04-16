@@ -37,8 +37,13 @@ async function downloadBinary(url: string, dest: string): Promise<void> {
 }
 
 export const updateCommand = new Command('update')
-  .description('Download and install the latest envshare release from GitHub')
-  .option('--check', 'Only check if a newer version is available, do not install')
+  .alias('upgrade')
+  .description('Check for updates and download the latest release from GitHub')
+  .option('--check', 'Only check if an update is available (do not install)')
+  .addHelpText('after', `
+Examples:
+  $ envshare update            Download and install the latest version
+  $ envshare update --check    Just check without installing`)
   .action(async (opts) => {
     const GITHUB_REPO =
       typeof __GITHUB_REPO__ !== 'undefined' && __GITHUB_REPO__

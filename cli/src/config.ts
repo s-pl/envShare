@@ -33,11 +33,19 @@ export function clearAuth(): void {
   _accessToken = null;
 }
 
+let _projectLinkCache: ProjectLink | null | undefined;
+
 export function readProjectLink(): ProjectLink | null {
+  if (_projectLinkCache !== undefined) return _projectLinkCache;
   const path = join(process.cwd(), '.envshare.json');
-  if (!existsSync(path)) return null;
-  try { return JSON.parse(readFileSync(path, 'utf-8')) as ProjectLink; }
-  catch { return null; }
+  if (!existsSync(path)) { _projectLinkCache = null; return null; }
+  try {
+    _projectLinkCache = JSON.parse(readFileSync(path, 'utf-8')) as ProjectLink;
+    return _projectLinkCache;
+  } catch {
+    _projectLinkCache = null;
+    return null;
+  }
 }
 
 export function writeProjectLink(link: ProjectLink): void {
@@ -74,18 +82,24 @@ function validatePushConfig(v: unknown): v is Partial<PushConfig> {
   return true;
 }
 
+let _pushConfigCache: PushConfig | undefined;
+
 export function readPushConfig(): PushConfig {
+  if (_pushConfigCache) return _pushConfigCache;
   const path = join(process.cwd(), '.envshare.config.json');
-  if (!existsSync(path)) return { ...DEFAULT_PUSH_CONFIG };
+  if (!existsSync(path)) { _pushConfigCache = { ...DEFAULT_PUSH_CONFIG }; return _pushConfigCache; }
   try {
     const raw: unknown = JSON.parse(readFileSync(path, 'utf-8'));
     if (!validatePushConfig(raw)) {
       process.stderr.write('Warning: .envshare.config.json has invalid fields — falling back to defaults\n');
-      return { ...DEFAULT_PUSH_CONFIG };
+      _pushConfigCache = { ...DEFAULT_PUSH_CONFIG };
+      return _pushConfigCache;
     }
-    return { ...DEFAULT_PUSH_CONFIG, ...raw };
+    _pushConfigCache = { ...DEFAULT_PUSH_CONFIG, ...raw };
+    return _pushConfigCache;
   } catch {
-    return { ...DEFAULT_PUSH_CONFIG };
+    _pushConfigCache = { ...DEFAULT_PUSH_CONFIG };
+    return _pushConfigCache;
   }
 }
 
