@@ -34,6 +34,12 @@ export function clearAuth(): void {
 }
 
 let _projectLinkCache: ProjectLink | null | undefined;
+let _pushConfigCache: PushConfig | undefined;
+
+export function clearConfigCache(): void {
+  _projectLinkCache = undefined;
+  _pushConfigCache = undefined;
+}
 
 export function readProjectLink(): ProjectLink | null {
   if (_projectLinkCache !== undefined) return _projectLinkCache;
@@ -81,8 +87,6 @@ function validatePushConfig(v: unknown): v is Partial<PushConfig> {
   if ('ignoredKeys' in c && !isStringArray(c.ignoredKeys)) return false;
   return true;
 }
-
-let _pushConfigCache: PushConfig | undefined;
 
 export function readPushConfig(): PushConfig {
   if (_pushConfigCache) return _pushConfigCache;
