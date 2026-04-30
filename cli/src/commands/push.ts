@@ -5,9 +5,18 @@ import chalk from 'chalk';
 import { paginatedCheckbox } from '../utils/paginatedCheckbox.js';
 import { paginatedSelect } from '../utils/paginatedSelect.js';
 import { api, ApiError } from '../api.js';
-import { readProjectLink, readPushConfig, isAutoShared, isIgnored } from '../config.js';
+import {
+  readProjectLink,
+  readPushConfig,
+  isAutoShared,
+  isIgnored,
+  isPathIgnored,
+  skipDirSet,
+  type PushConfig,
+} from '../config.js';
 import { parseDotenv } from '../utils/parseDotenv.js';
-import { sectionHeader, successLine } from '../utils/brand.js';
+import { sectionHeader, successLine, warnLine, dimLine, errorLine } from '../utils/brand.js';
+import { runBatched } from '../utils/batch.js';
 
 export { parseDotenv };
 
@@ -18,19 +27,21 @@ export { parseDotenv };
 const ENV_FILE_RE = /^\.env(\.[a-zA-Z0-9_-]+)?$/;
 const ENV_EXCLUDE = new Set(['.env.example', '.env.template', '.env.sample', '.env.bak', '.env.backup']);
 
-const SKIP_DIRS = new Set([
-  'node_modules', '.git', 'dist', 'build', '.cache', 'coverage',
-  'tmp', '.next', 'out', '.venv', 'venv', '__pycache__', '.idea',
-  '.vscode', 'vendor', '.terraform', '.docker', '.turbo', '.nuxt',
-  '.output', '.svelte-kit', 'target', 'bin', 'obj', 'docker',
-]);
-
 /**
  * Find .env files recursively throughout the project.
- * Skips common non-project directories, symlinks, and dot-directories.
- * Deduplicates by resolved real path to prevent the same file appearing twice.
+ * Skips common non-project directories (built-in + user-configured), symlinks,
+ * and dot-directories. Deduplicates by resolved real path.
+ *
+ * The `pushCfg` argument is optional: when omitted, only the built-in
+ * `DEFAULT_SKIP_DIRS` apply (legacy behavior used by tests).
  */
-export function findEnvFiles(root: string): string[] {
+export function findEnvFiles(root: string, pushCfg?: PushConfig): string[] {
+  const cfg: PushConfig = pushCfg ?? {
+    defaultFile: '.env',
+    sharedKeys: [], sharedPatterns: [], ignoredKeys: [],
+  };
+  const skip = skipDirSet(cfg);
+
   const results: string[] = [];
   const seenRealPaths = new Set<string>();
 
@@ -49,13 +60,15 @@ export function findEnvFiles(root: string): string[] {
       if (lst.isSymbolicLink()) continue;
 
       if (lst.isFile() && ENV_FILE_RE.test(name) && !ENV_EXCLUDE.has(name)) {
+        const rel = relative(root, abs).replace(/\\/g, '/');
+        if (isPathIgnored(rel, cfg)) continue;
         // Deduplicate by real path (handles hardlinks, bind mounts, etc.)
         const real = safeRealpath(abs);
         if (real && !seenRealPaths.has(real)) {
           seenRealPaths.add(real);
-          results.push(relative(root, abs).replace(/\\/g, '/'));
+          results.push(rel);
         }
-      } else if (lst.isDirectory() && !SKIP_DIRS.has(name) && !name.startsWith('.')) {
+      } else if (lst.isDirectory() && !skip.has(name) && !name.startsWith('.')) {
         walk(abs, depth + 1);
       }
     }
@@ -69,20 +82,17 @@ function safeRealpath(p: string): string | null {
   try { return realpathSync(p); } catch { return null; }
 }
 
-function loadEntries(absPath: string, pushCfg: ReturnType<typeof readPushConfig>) {
-  let entries = parseDotenv(readFileSync(absPath, 'utf-8'));
+function loadEntries(absPath: string, pushCfg: PushConfig) {
+  const entries = parseDotenv(readFileSync(absPath, 'utf-8'));
   return entries
     .filter(e => !isIgnored(e.key, pushCfg))
     .map(e => ({ ...e, isShared: e.isShared || isAutoShared(e.key, pushCfg) }));
 }
 
-type LoadedFile = { path: string; entries: ReturnType<typeof loadEntries> };
+type LoadedEntry = ReturnType<typeof loadEntries>[number];
+type LoadedFile = { path: string; entries: LoadedEntry[] };
 
-async function selectEnvFile(
-  filePaths: string[],
-  pushCfg: ReturnType<typeof readPushConfig>,
-  root: string,
-): Promise<LoadedFile | null> {
+async function selectEnvFile(filePaths: string[], pushCfg: PushConfig, root: string): Promise<LoadedFile | null> {
   const loaded: LoadedFile[] = filePaths
     .filter(fp => existsSync(join(root, fp)))
     .map(fp => ({ path: fp, entries: loadEntries(join(root, fp), pushCfg) }));
@@ -101,10 +111,35 @@ async function selectEnvFile(
 const BATCH_SIZE = 10;
 const CONCURRENCY = 3;
 
-function chunk<T>(arr: T[], size: number): T[][] {
-  const out: T[][] = [];
-  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
-  return out;
+interface PushTotals { created: number; updated: number; shared: number }
+
+interface PushResponse {
+  result: { created: string[]; updated: string[]; sharedUpdated: string[] };
+}
+
+async function pushSecrets(
+  projectId: string,
+  filePath: string,
+  entries: LoadedEntry[],
+  environmentName: string | undefined,
+  onProgress?: (done: number, total: number) => void,
+): Promise<PushTotals> {
+  const responses = await runBatched<LoadedEntry, PushResponse>(
+    entries,
+    batch => api.post<PushResponse>(
+      `/sync/${projectId}/push`,
+      { secrets: batch, filePath, environmentName },
+    ),
+    { batchSize: BATCH_SIZE, concurrency: CONCURRENCY, onProgress },
+  );
+
+  const totals: PushTotals = { created: 0, updated: 0, shared: 0 };
+  for (const { result } of responses) {
+    totals.created += result.created.length;
+    totals.updated += result.updated.length;
+    totals.shared  += result.sharedUpdated.length;
+  }
+  return totals;
 }
 
 function bar(done: number, total: number, width = 24): string {
@@ -112,40 +147,12 @@ function bar(done: number, total: number, width = 24): string {
   return chalk.green('█'.repeat(filled)) + chalk.dim('░'.repeat(width - filled));
 }
 
-async function pushWithProgress(
-  filePath: string,
-  projectId: string,
-  entries: { key: string; value: string; isShared: boolean }[],
-  environmentName?: string,
-): Promise<{ created: number; updated: number; shared: number }> {
-  const batches = chunk(entries, BATCH_SIZE);
-  let done = 0;
-  const totals = { created: 0, updated: 0, shared: 0 };
-
-  try {
-    for (let i = 0; i < batches.length; i += CONCURRENCY) {
-      const window = batches.slice(i, i + CONCURRENCY);
-      const responses = await Promise.all(
-        window.map(batch =>
-          api.post<{ result: { created: string[]; updated: string[]; sharedUpdated: string[] } }>(
-            `/sync/${projectId}/push`,
-            { secrets: batch, filePath, environmentName },
-          ),
-        ),
-      );
-      done += window.reduce((sum, b) => sum + b.length, 0);
-      responses.forEach(({ result }) => {
-        totals.created += result.created.length;
-        totals.updated += result.updated.length;
-        totals.shared  += result.sharedUpdated.length;
-      });
-      process.stdout.write(`\r  ${bar(done, entries.length)}  ${done}/${entries.length}`);
-    }
-  } finally {
-    process.stdout.write('\r\x1b[K'); // clear progress line
-  }
-
-  return totals;
+function summaryParts(t: PushTotals): string[] {
+  const parts: string[] = [];
+  if (t.created) parts.push(chalk.green(`+${t.created} new`));
+  if (t.updated) parts.push(`${t.updated} updated`);
+  if (t.shared)  parts.push(chalk.blue(`${t.shared} shared`));
+  return parts;
 }
 
 export const pushCommand = new Command('push')
@@ -168,13 +175,17 @@ Shared variables:
   Mark a variable as shared (visible to all team members) by adding a comment:
     DATABASE_URL=postgres://... # @shared
   Or configure patterns in .envshare.config.json:
-    { "sharedPatterns": ["*_URL", "DB_*"], "ignoredKeys": ["LOCAL_*"] }`)
+    { "sharedPatterns": ["*_URL", "DB_*"], "ignoredKeys": ["LOCAL_*"] }
+
+Ignoring files:
+  Skip .env files by path or directory in .envshare.config.json:
+    { "ignoredPaths": ["docker/**", "**/.env.docker"], "ignoredDirs": ["infra"] }`)
   .action(async (file: string | undefined, opts) => {
     if (opts.yes) opts.all = true;
 
     const link = readProjectLink();
     if (!link) {
-      console.error(chalk.red('  No project linked. Run `envshare init` first.'));
+      errorLine('No project linked. Run `envshare init` first.');
       process.exit(1);
     }
 
@@ -185,7 +196,7 @@ Shared variables:
     if (file) {
       filePaths = [file];
     } else {
-      filePaths = findEnvFiles(root);
+      filePaths = findEnvFiles(root, pushCfg);
       if (!filePaths.length) filePaths = [pushCfg.defaultFile];
     }
 
@@ -195,9 +206,9 @@ Shared variables:
     if (opts.dryRun) {
       for (const fp of filePaths) {
         const absPath = join(root, fp);
-        if (!existsSync(absPath)) { console.log(chalk.yellow(`  ⚠ skipped: ${fp} (not found)`)); continue; }
+        if (!existsSync(absPath)) { warnLine(`skipped: ${fp} (not found)`); continue; }
         const entries = loadEntries(absPath, pushCfg);
-        if (!entries.length) { console.log(chalk.dim(`  ${fp}: no variables`)); continue; }
+        if (!entries.length) { dimLine(`${fp}: no variables`); continue; }
         const shared   = entries.filter(e => e.isShared);
         const personal = entries.filter(e => !e.isShared);
         console.log(chalk.bold(`  ${fp}`));
@@ -213,55 +224,29 @@ Shared variables:
       const loaded = filePaths
         .map(fp => {
           const absPath = join(root, fp);
-          if (!existsSync(absPath)) {
-            console.log(chalk.yellow(`  ⚠ skipped: ${fp} (not found)`));
-            return null;
-          }
+          if (!existsSync(absPath)) { warnLine(`skipped: ${fp} (not found)`); return null; }
           const entries = loadEntries(absPath, pushCfg);
-          if (!entries.length) {
-            console.log(chalk.dim(`  ${fp}: no variables`));
-            return null;
-          }
+          if (!entries.length) { dimLine(`${fp}: no variables`); return null; }
           return { fp, entries };
         })
-        .filter((x): x is { fp: string; entries: ReturnType<typeof loadEntries> } => x !== null);
+        .filter((x): x is { fp: string; entries: LoadedEntry[] } => x !== null);
 
       const results = await Promise.allSettled(
-        loaded.map(async ({ fp, entries }) => {
-          const batches = chunk(entries, BATCH_SIZE);
-          const totals = { created: 0, updated: 0, shared: 0 };
-          for (let i = 0; i < batches.length; i += CONCURRENCY) {
-            const window = batches.slice(i, i + CONCURRENCY);
-            const responses = await Promise.all(
-              window.map(b =>
-                api.post<{ result: { created: string[]; updated: string[]; sharedUpdated: string[] } }>(
-                  `/sync/${link.projectId}/push`,
-                  { secrets: b, filePath: fp, environmentName: opts.env },
-                ),
-              ),
-            );
-            responses.forEach(({ result }) => {
-              totals.created += result.created.length;
-              totals.updated += result.updated.length;
-              totals.shared  += result.sharedUpdated.length;
-            });
-          }
-          return { fp, totals };
-        }),
+        loaded.map(async ({ fp, entries }) => ({
+          fp,
+          totals: await pushSecrets(link.projectId, fp, entries, opts.env),
+        })),
       );
 
       let failed = 0;
       for (const r of results) {
         if (r.status === 'fulfilled') {
-          const { fp, totals: t } = r.value;
-          const parts: string[] = [];
-          if (t.created) parts.push(`+${t.created} new`);
-          if (t.updated) parts.push(`${t.updated} updated`);
-          if (t.shared)  parts.push(`${t.shared} shared`);
-          successLine(`${chalk.cyan(fp)}` + chalk.dim(`  —  ${parts.join(', ')}`));
+          const { fp, totals } = r.value;
+          const parts = summaryParts(totals);
+          successLine(`${chalk.cyan(fp)}` + chalk.dim(parts.length ? `  —  ${parts.join(', ')}` : ''));
         } else {
           const err = r.reason instanceof ApiError ? r.reason.message : 'unexpected error';
-          console.error(chalk.red(`  ✗ ${err}`));
+          errorLine(err);
           failed++;
         }
       }
@@ -272,11 +257,12 @@ Shared variables:
 
     // ── Interactive flow ──────────────────────────────────────────────────────
     const chosen = await selectEnvFile(filePaths, pushCfg, root);
-    if (!chosen) { console.log(chalk.yellow('  Aborted.')); process.exit(0); }
+    if (!chosen) { warnLine('Aborted.'); process.exit(0); }
 
     const { path: chosenFile, entries } = chosen!;
     if (!entries.length) {
-      console.log(chalk.dim(`  No variables to push in ${chosenFile}\n`));
+      dimLine(`No variables to push in ${chosenFile}`);
+      console.log();
       process.exit(0);
     }
 
@@ -289,22 +275,30 @@ Shared variables:
     ];
 
     const selectedKeys = await paginatedCheckbox('Select variables to push', choices, 18);
-    if (!selectedKeys.length) { console.log(chalk.dim('  Aborted.')); process.exit(0); }
+    if (!selectedKeys.length) { warnLine('Aborted.'); process.exit(0); }
 
     const selectedSet = new Set(selectedKeys);
     const selected = entries.filter(e => selectedSet.has(e.key));
 
     console.log();
     try {
-      const t = await pushWithProgress(chosenFile, link.projectId, selected, opts.env);
-      const parts: string[] = [];
-      if (t.created) parts.push(chalk.green(`+${t.created} new`));
-      if (t.updated) parts.push(`${t.updated} updated`);
-      if (t.shared)  parts.push(chalk.blue(`${t.shared} shared`));
-      successLine(`Pushed ${chalk.bold(String(selected.length))} variables` + (parts.length ? chalk.dim(`  —  `) + parts.join(chalk.dim(', ')) : ''));
+      const totals = await pushSecrets(
+        link.projectId,
+        chosenFile,
+        selected,
+        opts.env,
+        (done, total) => process.stdout.write(`\r  ${bar(done, total)}  ${done}/${total}`),
+      );
+      process.stdout.write('\r\x1b[K'); // clear progress line
+      const parts = summaryParts(totals);
+      successLine(
+        `Pushed ${chalk.bold(String(selected.length))} variables` +
+        (parts.length ? chalk.dim('  —  ') + parts.join(chalk.dim(', ')) : ''),
+      );
     } catch (err) {
-      if (err instanceof ApiError) console.error(chalk.red(`  ✗ ${err.message}`));
-      else console.error(chalk.red('  ✗ Unexpected error'));
+      process.stdout.write('\r\x1b[K');
+      if (err instanceof ApiError) errorLine(err.message);
+      else errorLine('Unexpected error');
       process.exit(1);
     }
 

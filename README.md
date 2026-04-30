@@ -479,11 +479,20 @@ STRIPE_SECRET_KEY=sk_test_...
   "defaultFile": ".env",
   "sharedKeys":     ["NODE_ENV", "PORT"],
   "sharedPatterns": ["*_URL", "*_HOST", "DB_*"],
-  "ignoredKeys":    ["LOCAL_OVERRIDE"]
+  "ignoredKeys":    ["LOCAL_OVERRIDE"],
+  "ignoredPaths":   ["docker/**", "infra/**", "**/.env.docker"],
+  "ignoredDirs":    ["legacy"]
 }
 ```
 
-Pattern syntax: `*` matches any number of characters, `?` matches exactly one. Matching is case-insensitive.
+Pattern syntax for keys (`sharedKeys`, `sharedPatterns`, `ignoredKeys`): `*` matches any number of characters, `?` matches exactly one. Matching is case-insensitive.
+
+**Skipping `.env` files:**
+
+- `ignoredPaths` accepts glob patterns matched against the file's path relative to the project root. `**` spans any number of directories, `*` any characters except `/`. Use this to keep `.env` files belonging to Docker, infra, or other non-app contexts out of `push`.
+- `ignoredDirs` adds extra directory names to the built-in skip list (`node_modules`, `.git`, `dist`, `docker`, …). The scan never descends into these directories at any depth.
+
+Running `envshare init` writes a `.envshare.config.json` with sensible defaults so you can edit it from there.
 
 ---
 

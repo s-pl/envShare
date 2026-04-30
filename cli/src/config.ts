@@ -64,14 +64,29 @@ export interface PushConfig {
   defaultFile: string;
   sharedKeys: string[];       // exact key names always treated as shared
   sharedPatterns: string[];   // glob-style patterns: *_URL, DB_*, etc.
-  ignoredKeys: string[];      // never pushed
+  ignoredKeys: string[];      // keys never pushed (matches by pattern too)
+  ignoredPaths?: string[];    // file path globs to skip: docker/**, **/.env.docker
+  ignoredDirs?: string[];     // extra directory names to skip during scan
 }
+
+/**
+ * Built-in directory names skipped during recursive scans (always present).
+ * `ignoredDirs` from user config is added on top.
+ */
+export const DEFAULT_SKIP_DIRS: readonly string[] = [
+  'node_modules', '.git', 'dist', 'build', '.cache', 'coverage',
+  'tmp', '.next', 'out', '.venv', 'venv', '__pycache__', '.idea',
+  '.vscode', 'vendor', '.terraform', '.docker', '.turbo', '.nuxt',
+  '.output', '.svelte-kit', 'target', 'bin', 'obj', 'docker',
+];
 
 const DEFAULT_PUSH_CONFIG: PushConfig = {
   defaultFile: '.env',
   sharedKeys: [],
   sharedPatterns: [],
   ignoredKeys: [],
+  ignoredPaths: [],
+  ignoredDirs: [],
 };
 
 function isStringArray(v: unknown): v is string[] {
@@ -85,6 +100,8 @@ function validatePushConfig(v: unknown): v is Partial<PushConfig> {
   if ('sharedKeys' in c && !isStringArray(c.sharedKeys)) return false;
   if ('sharedPatterns' in c && !isStringArray(c.sharedPatterns)) return false;
   if ('ignoredKeys' in c && !isStringArray(c.ignoredKeys)) return false;
+  if ('ignoredPaths' in c && !isStringArray(c.ignoredPaths)) return false;
+  if ('ignoredDirs' in c && !isStringArray(c.ignoredDirs)) return false;
   return true;
 }
 
@@ -117,10 +134,51 @@ export function matchesPattern(key: string, pattern: string): boolean {
   return re.test(key);
 }
 
+/**
+ * Glob match for relative file paths.
+ * Supports `**` (any number of segments, incl. zero), `*` (any chars except `/`),
+ * `?` (single char). Always anchored start-to-end. Forward slashes only.
+ */
+export function matchesPathGlob(relPath: string, pattern: string): boolean {
+  const normalized = relPath.replace(/\\/g, '/').replace(/^\.?\//, '');
+  const pat = pattern.replace(/\\/g, '/').replace(/^\.?\//, '');
+
+  // Build regex: tokenize **, *, ? then escape the rest.
+  let re = '';
+  for (let i = 0; i < pat.length; i++) {
+    const c = pat[i];
+    if (c === '*' && pat[i + 1] === '*') {
+      // ** → match anything (including / and empty); collapse a trailing /
+      re += '.*';
+      i++;
+      if (pat[i + 1] === '/') i++;
+    } else if (c === '*') {
+      re += '[^/]*';
+    } else if (c === '?') {
+      re += '[^/]';
+    } else if ('.+^${}()|[]\\'.includes(c)) {
+      re += '\\' + c;
+    } else {
+      re += c;
+    }
+  }
+  return new RegExp('^' + re + '$').test(normalized);
+}
+
 export function isAutoShared(key: string, cfg: PushConfig): boolean {
   return cfg.sharedKeys.includes(key) || cfg.sharedPatterns.some(p => matchesPattern(key, p));
 }
 
 export function isIgnored(key: string, cfg: PushConfig): boolean {
   return cfg.ignoredKeys.some(p => matchesPattern(key, p));
+}
+
+/** Returns true if a relative file path matches any `ignoredPaths` glob. */
+export function isPathIgnored(relPath: string, cfg: PushConfig): boolean {
+  return (cfg.ignoredPaths ?? []).some(p => matchesPathGlob(relPath, p));
+}
+
+/** Combined set of directory names to skip during recursive scans. */
+export function skipDirSet(cfg: PushConfig): Set<string> {
+  return new Set([...DEFAULT_SKIP_DIRS, ...(cfg.ignoredDirs ?? [])]);
 }

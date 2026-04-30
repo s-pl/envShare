@@ -3,7 +3,7 @@ import chalk from 'chalk';
 import { confirm, restoreTerminal } from '../utils/prompt.js';
 import { api, ApiError } from '../api.js';
 import { readProjectLink } from '../config.js';
-import { successLine, failLine } from '../utils/brand.js';
+import { successLine, failLine, errorLine, dimLine } from '../utils/brand.js';
 
 export const deleteCommand = new Command('delete')
   .alias('rm')
@@ -17,7 +17,7 @@ Examples:
   .action(async (key: string, opts) => {
     const link = readProjectLink();
     if (!link) {
-      console.error(chalk.red('  No project linked. Run `envshare init` first.'));
+      errorLine('No project linked. Run `envshare init` first.');
       process.exit(1);
     }
 
@@ -38,14 +38,14 @@ Examples:
           default: false,
         });
         restoreTerminal();
-        if (!confirmed) { console.log(chalk.dim('  Aborted.')); process.exit(0); }
+        if (!confirmed) { dimLine('Aborted.'); process.exit(0); }
       }
 
       process.stdout.write(chalk.dim(`  Deleting ${key}...\n`));
       await api.delete(`/secrets/${secret.id}`);
       successLine(`Deleted ${chalk.bold(key)}`);
     } catch (err) {
-      if (err instanceof ApiError) { console.error(chalk.red(`  Error: ${err.message}`)); process.exit(1); }
+      if (err instanceof ApiError) { errorLine(err.message); process.exit(1); }
       throw err;
     }
   });

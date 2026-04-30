@@ -3,6 +3,7 @@ import chalk from 'chalk';
 import { input, confirm, restoreTerminal } from '../utils/prompt.js';
 import { api, ApiError } from '../api.js';
 import { readProjectLink } from '../config.js';
+import { errorLine, successLine, dimLine } from '../utils/brand.js';
 
 export const projectsCommand = new Command('project')
   .alias('p')
@@ -30,10 +31,12 @@ projectsCommand
 
     try {
       const { project } = await api.post<{ project: any }>('/projects', { name, slug });
-      console.log(chalk.green(`\n  Project "${project.name}" created.\n`));
-      console.log(chalk.dim('  Run `envshare init` in your project folder to link it.\n'));
+      console.log();
+      successLine(`Project "${chalk.bold(project.name)}" created.`);
+      dimLine('Run `envshare init` in your project folder to link it.');
+      console.log();
     } catch (err) {
-      if (err instanceof ApiError) { console.error(chalk.red(`\n  Error: ${err.message}`)); process.exit(1); }
+      if (err instanceof ApiError) { errorLine(err.message); process.exit(1); }
       throw err;
     }
   });
@@ -45,7 +48,7 @@ projectsCommand
   .action(async (email: string, opts) => {
     const link = readProjectLink();
     if (!link) {
-      console.error(chalk.red('  No project linked. Run `envshare init` first.'));
+      errorLine('No project linked. Run `envshare init` first.');
       process.exit(1);
     }
 
@@ -54,9 +57,9 @@ projectsCommand
         `/projects/${link.projectId}/members`,
         { email, role: opts.role.toUpperCase() },
       );
-      console.log(chalk.green(`  Added ${member.user.email} as ${member.role} to ${link.projectName}`));
+      successLine(`Added ${chalk.bold(member.user.email)} as ${member.role} to ${link.projectName}`);
     } catch (err) {
-      if (err instanceof ApiError) { console.error(chalk.red(`  Error: ${err.message}`)); process.exit(1); }
+      if (err instanceof ApiError) { errorLine(err.message); process.exit(1); }
       throw err;
     }
   });
@@ -68,7 +71,7 @@ projectsCommand
   .action(async () => {
     const link = readProjectLink();
     if (!link) {
-      console.error(chalk.red('  No project linked. Run `envshare init` first.'));
+      errorLine('No project linked. Run `envshare init` first.');
       process.exit(1);
     }
 
@@ -81,7 +84,7 @@ projectsCommand
       });
       console.log();
     } catch (err) {
-      if (err instanceof ApiError) { console.error(chalk.red(`  Error: ${err.message}`)); process.exit(1); }
+      if (err instanceof ApiError) { errorLine(err.message); process.exit(1); }
       throw err;
     }
   });
@@ -92,13 +95,13 @@ projectsCommand
   .action(async (email: string, role: string) => {
     const link = readProjectLink();
     if (!link) {
-      console.error(chalk.red('  No project linked. Run `envshare init` first.'));
+      errorLine('No project linked. Run `envshare init` first.');
       process.exit(1);
     }
 
     const normalized = role.toUpperCase();
     if (!['ADMIN', 'DEVELOPER', 'VIEWER'].includes(normalized)) {
-      console.error(chalk.red('  Invalid role. Use: ADMIN, DEVELOPER, VIEWER'));
+      errorLine('Invalid role. Use: ADMIN, DEVELOPER, VIEWER');
       process.exit(1);
     }
 
@@ -106,14 +109,14 @@ projectsCommand
       const { members } = await api.get<{ members: any[] }>(`/projects/${link.projectId}/members`);
       const target = members.find((m: any) => m.user.email === email);
       if (!target) {
-        console.error(chalk.red(`  No member with email: ${email}`));
+        errorLine(`No member with email: ${email}`);
         process.exit(1);
       }
 
       await api.patch(`/projects/${link.projectId}/members/${target.user.id}`, { role: normalized });
-      console.log(chalk.green(`  ${email} is now ${normalized} in ${link.projectName}`));
+      successLine(`${chalk.bold(email)} is now ${normalized} in ${link.projectName}`);
     } catch (err) {
-      if (err instanceof ApiError) { console.error(chalk.red(`  Error: ${err.message}`)); process.exit(1); }
+      if (err instanceof ApiError) { errorLine(err.message); process.exit(1); }
       throw err;
     }
   });
@@ -125,7 +128,7 @@ projectsCommand
   .action(async (email: string) => {
     const link = readProjectLink();
     if (!link) {
-      console.error(chalk.red('  No project linked. Run `envshare init` first.'));
+      errorLine('No project linked. Run `envshare init` first.');
       process.exit(1);
     }
 
@@ -133,7 +136,7 @@ projectsCommand
       const { members } = await api.get<{ members: any[] }>(`/projects/${link.projectId}/members`);
       const target = members.find((m: any) => m.user.email === email);
       if (!target) {
-        console.error(chalk.red(`  No member with email: ${email}`));
+        errorLine(`No member with email: ${email}`);
         process.exit(1);
       }
 
@@ -142,12 +145,12 @@ projectsCommand
         default: false,
       });
       restoreTerminal();
-      if (!confirmed) { console.log(chalk.dim('  Aborted.')); process.exit(0); }
+      if (!confirmed) { dimLine('Aborted.'); process.exit(0); }
 
       await api.delete(`/projects/${link.projectId}/members/${target.user.id}`);
-      console.log(chalk.green(`  Removed ${email} from ${link.projectName}`));
+      successLine(`Removed ${chalk.bold(email)} from ${link.projectName}`);
     } catch (err) {
-      if (err instanceof ApiError) { console.error(chalk.red(`  Error: ${err.message}`)); process.exit(1); }
+      if (err instanceof ApiError) { errorLine(err.message); process.exit(1); }
       throw err;
     }
   });
@@ -159,7 +162,7 @@ projectsCommand
   .action(async (opts) => {
     const link = readProjectLink();
     if (!link) {
-      console.error(chalk.red('  No project linked. Run `envshare init` first.'));
+      errorLine('No project linked. Run `envshare init` first.');
       process.exit(1);
     }
 
@@ -169,14 +172,14 @@ projectsCommand
         default: false,
       });
       restoreTerminal();
-      if (!confirmed) { console.log(chalk.dim('  Aborted.')); process.exit(0); }
+      if (!confirmed) { dimLine('Aborted.'); process.exit(0); }
     }
 
     try {
       await api.delete(`/projects/${link.projectId}`);
-      console.log(chalk.green(`  Project "${link.projectName}" deleted.`));
+      successLine(`Project "${chalk.bold(link.projectName)}" deleted.`);
     } catch (err) {
-      if (err instanceof ApiError) { console.error(chalk.red(`  Error: ${err.message}`)); process.exit(1); }
+      if (err instanceof ApiError) { errorLine(err.message); process.exit(1); }
       throw err;
     }
   });

@@ -38,6 +38,12 @@ function validateConfig(): void {
   if (!/^[0-9a-fA-F]{64}$/.test(masterKey)) {
     throw new Error('MASTER_ENCRYPTION_KEY must be exactly 64 hex characters (32 bytes)');
   }
+  // Surface DATABASE_URL misconfiguration at boot rather than on the first query.
+  const dbUrl = process.env.DATABASE_URL;
+  if (!dbUrl) throw new Error('DATABASE_URL is not set');
+  if (!/^postgres(ql)?:\/\//i.test(dbUrl)) {
+    throw new Error('DATABASE_URL must be a postgres:// or postgresql:// connection string');
+  }
 }
 
 try {
@@ -149,6 +155,23 @@ const loginLimiter = rateLimit({
   },
 });
 
+/**
+ * Refresh tokens are single-use and rotated on every call, so a flood of
+ * /auth/refresh hits typically means token replay or a faulty client looping.
+ * Tighter than the global limit, looser than login (legitimate clients refresh
+ * roughly once per access-token TTL).
+ */
+const refreshLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: "Too many refresh attempts, please sign in again.",
+    code: "RATE_LIMITED",
+  },
+});
+
 const globalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 500,
@@ -193,6 +216,7 @@ app.use(
 // ─── Routes ───────────────────────────────────────────────────────────────────
 app.use("/api/v1/auth/login", loginLimiter);
 app.use("/api/v1/auth/register", loginLimiter);
+app.use("/api/v1/auth/refresh", refreshLimiter);
 
 app.use("/api/v1/auth", authRouter);
 app.use("/api/v1/account", accountRouter);

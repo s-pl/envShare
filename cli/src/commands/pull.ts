@@ -9,7 +9,7 @@ import { join, dirname, resolve, sep } from 'path';
 import chalk from 'chalk';
 import { api, ApiError } from '../api.js';
 import { readProjectLink } from '../config.js';
-import { sectionHeader, successLine } from '../utils/brand.js';
+import { sectionHeader, successLine, errorLine, warnLine } from '../utils/brand.js';
 
 interface PulledSecret {
   key: string;
@@ -58,7 +58,7 @@ Examples:
   .action(async (opts) => {
     const link = readProjectLink();
     if (!link) {
-      console.error(chalk.red('  No project linked. Run `envshare init` first.'));
+      errorLine('No project linked. Run `envshare init` first.');
       process.exit(1);
     }
 
@@ -83,7 +83,7 @@ Examples:
         const outputPath = resolve(process.cwd(), opts.output);
         const cwd = process.cwd();
         if (!outputPath.startsWith(cwd + sep) && outputPath !== cwd) {
-          console.error(chalk.red(`  Refusing to write outside project directory: ${opts.output}`));
+          errorLine(`Refusing to write outside project directory: ${opts.output}`);
           process.exit(1);
         }
         writeFileSync(outputPath, content, { mode: 0o600 });
@@ -102,7 +102,7 @@ Examples:
         for (const [filePath, group] of groups) {
           const absPath = resolve(cwd, filePath);
           if (!absPath.startsWith(cwd + sep) && absPath !== cwd) {
-            console.error(chalk.red(`  Refusing to write outside project directory: ${filePath}`));
+            errorLine(`Refusing to write outside project directory: ${filePath}`);
             continue;
           }
           const content = buildEnvFile(group, link.projectName);
@@ -116,13 +116,14 @@ Examples:
 
       const pending = secrets.filter(s => !s.isShared && !s.hasPersonalValue);
       if (pending.length) {
-        console.log(chalk.yellow(`\n  ⚠  ${pending.length} variable(s) need your personal value:`));
+        console.log();
+        warnLine(`${pending.length} variable(s) need your personal value:`);
         pending.forEach(s => console.log(chalk.dim(`     envshare set ${s.key} "your-value"`)));
       }
 
       console.log();
     } catch (err) {
-      if (err instanceof ApiError) { console.error(chalk.red(`  Error: ${err.message}`)); }
+      if (err instanceof ApiError) errorLine(err.message);
       else throw err;
       process.exit(1);
     }

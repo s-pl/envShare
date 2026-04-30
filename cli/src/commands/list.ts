@@ -2,6 +2,7 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 import { api, ApiError } from '../api.js';
 import { readProjectLink } from '../config.js';
+import { errorLine, warnLine, dimLine } from '../utils/brand.js';
 
 interface SecretMeta {
   id: string;
@@ -25,7 +26,7 @@ Examples:
   .action(async (opts) => {
     const link = readProjectLink();
     if (!link) {
-      console.error(chalk.red('  No project linked. Run `envshare init` first.'));
+      errorLine('No project linked. Run `envshare init` first.');
       process.exit(1);
     }
 
@@ -44,7 +45,9 @@ Examples:
       }
 
       if (!secrets.length) {
-        console.log(chalk.dim(`\n  No secrets in ${link.projectName}\n`));
+        console.log();
+        dimLine(`No secrets in ${link.projectName}`);
+        console.log();
         return;
       }
 
@@ -61,12 +64,13 @@ Examples:
 
       const pending = secrets.filter(s => !s.isShared && !s.hasPersonalValue);
       if (pending.length) {
-        console.log(chalk.yellow(`\n  ${pending.length} secret(s) need your personal value:`));
+        console.log();
+        warnLine(`${pending.length} secret(s) need your personal value:`);
         pending.forEach(s => console.log(chalk.dim(`    envshare set ${s.key} "your-value"`)));
       }
       console.log();
     } catch (err) {
-      if (err instanceof ApiError) { console.error(chalk.red(`  Error: ${err.message}`)); process.exit(1); }
+      if (err instanceof ApiError) { errorLine(err.message); process.exit(1); }
       throw err;
     }
   });

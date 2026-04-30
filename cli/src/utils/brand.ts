@@ -97,6 +97,24 @@ export function failLine(msg: string): void {
   console.log(`  ${chalk.red('✖')} ${msg}`);
 }
 
+/** Display a warning line (yellow triangle). */
+export function warnLine(msg: string): void {
+  console.log(`  ${chalk.yellow('▲')} ${msg}`);
+}
+
+/** Display an informational line (dim caret). */
+export function infoLine(msg: string): void {
+  console.log(`  ${chalk.cyan('›')} ${msg}`);
+}
+
+/** Display a dim/muted line (skipped, not-found, etc.). */
+export function dimLine(msg: string): void {
+  console.log(chalk.dim(`  · ${msg}`));
+}
+
+/** Alias of failLine for callers that prefer the `error` name. */
+export const errorLine = failLine;
+
 /**
  * Section header with a subtle line decoration.
  *   ── Push to my-project ──────────────────
